@@ -7,3 +7,5 @@ public/wasm/
 .DS_Store
 *.local
 *.tsbuildinfo
+.vercel
+.env*
