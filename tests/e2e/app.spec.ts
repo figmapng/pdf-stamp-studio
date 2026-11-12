@@ -67,16 +67,27 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
 
     // Step 1: Upload PDFs ONLY (2 valid + 1 invalid; PNG inputs belong to Step 2)
     await expect(page.locator('input[type="file"][accept*="png"]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Келесі: Қол мен мөр' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '2. Қол мен мөр' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '3. Тексеру' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '4. Экспорт' })).toBeDisabled();
+
     const pdfInput = page.locator('input[type="file"][accept*="pdf"]');
+    await pdfInput.setInputFiles([
+      { name: 'corrupted.pdf', mimeType: 'application/pdf', buffer: Buffer.from(badPdfBytes) },
+    ]);
+    await expect(page.getByText('corrupted.pdf')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Келесі: Қол мен мөр' })).toBeDisabled();
+
     await pdfInput.setInputFiles([
       { name: 'contract-101.pdf', mimeType: 'application/pdf', buffer: Buffer.from(contractBytes1) },
       { name: 'contract-102.pdf', mimeType: 'application/pdf', buffer: Buffer.from(contractBytes2) },
-      { name: 'corrupted.pdf', mimeType: 'application/pdf', buffer: Buffer.from(badPdfBytes) },
     ]);
 
     await expect(page.getByText('contract-101.pdf')).toBeVisible();
     await expect(page.getByText('contract-102.pdf')).toBeVisible();
-    await expect(page.getByText('corrupted.pdf')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Келесі: Қол мен мөр' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '2. Қол мен мөр' })).toBeEnabled();
 
     // Step 2: Profile, Signatures, Stamp PNG & Placement Setup (empty by default)
     await page.getByRole('button', { name: 'Келесі: Қол мен мөр' }).click();
@@ -343,7 +354,13 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
   test('automatically strips opaque paper background from JPEG/PNG signature & stamp assets and trims margins', async ({
     page,
   }) => {
+    const dummyPdf = await createCustomPdfFixture({ pageCount: 1, texts: [], lines: [] });
     await page.goto('/');
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({
+      name: 'dummy.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(dummyPdf),
+    });
 
     // Create an opaque white-background JPEG stamp (200x200 with blue ring centered, large white border)
     const opaqueJpgBytes = await page.evaluate(async () => {
@@ -510,8 +527,14 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
   }) => {
     const sigBytes = await createTestPngBytes({ width: 120, height: 50 });
     const stampBytes = await createTestPngBytes({ width: 100, height: 100 });
+    const dummyPdf = await createCustomPdfFixture({ pageCount: 1, texts: [], lines: [] });
 
     await page.goto('/');
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({
+      name: 'persist-dummy.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(dummyPdf),
+    });
     await page.getByRole('button', { name: '2. Қол мен мөр' }).click();
     await page.getByRole('button', { name: 'Қол қоюшы қосу' }).first().click();
     await page.getByRole('button', { name: 'Мөр қосу' }).first().click();
@@ -527,9 +550,14 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
     await expect(page.getByText('saved-sig.png')).toBeVisible();
     await expect(page.getByText('saved-stamp.png')).toBeVisible();
 
-    // Allow IndexedDB save to flush, then reload page and navigate back to Step 2
+    // Allow IndexedDB save to flush, then reload page, upload a PDF, and navigate back to Step 2
     await page.waitForTimeout(300);
     await page.reload();
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({
+      name: 'persist-dummy.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(dummyPdf),
+    });
     await page.getByRole('button', { name: '2. Қол мен мөр' }).click();
 
     await expect(page.locator('input[name$="-fullName"]').nth(0)).toHaveValue('Сатыбалдина З. С.');

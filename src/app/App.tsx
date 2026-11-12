@@ -631,6 +631,7 @@ export const App: React.FC = () => {
         ? 'max-w-6xl'
         : 'max-w-5xl';
   const activeStepIndex = navTabs.findIndex((tab) => tab.id === activeTab);
+  const hasValidPdf = files.some((f) => f.isValid);
 
   return (
     <ToastProvider>
@@ -739,6 +740,7 @@ export const App: React.FC = () => {
                 {navTabs.map((tab, idx) => {
                   const isCurrent = activeTab === tab.id;
                   const isCompleted = activeStepIndex > idx;
+                  const isLocked = idx > 0 && !hasValidPdf;
                   const shortTitle = tab.label.replace(/^\d+\.\s*/, '');
 
                   return (
@@ -747,8 +749,9 @@ export const App: React.FC = () => {
                         type="button"
                         aria-label={tab.label}
                         aria-current={isCurrent ? 'step' : undefined}
+                        disabled={isLocked}
                         onClick={() => setActiveTab(tab.id)}
-                        className="group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-left transition-colors hover:bg-[var(--color-bg-surface)] sm:gap-2 sm:px-1.5"
+                        className="group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-left transition-colors hover:bg-[var(--color-bg-surface)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent sm:gap-2 sm:px-1.5"
                       >
                         <span
                           aria-hidden="true"
@@ -901,7 +904,11 @@ export const App: React.FC = () => {
 
             <div>
               {activeTab === 'upload' && (
-                <Button size="md" onClick={() => setActiveTab('profiles')}>
+                <Button
+                  size="md"
+                  disabled={!hasValidPdf}
+                  onClick={() => setActiveTab('profiles')}
+                >
                   {t.upload.nextStep}
                   <ArrowRight className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                 </Button>
@@ -910,7 +917,7 @@ export const App: React.FC = () => {
                 <Button
                   size="md"
                   onClick={startAnalysis}
-                  disabled={files.length === 0 || (signers.length === 0 && stamps.length === 0)}
+                  disabled={!hasValidPdf || (signers.length === 0 && stamps.length === 0)}
                 >
                   <Play className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   {t.stamp.startAnalysisBtn}
