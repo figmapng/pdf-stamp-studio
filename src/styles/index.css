@@ -1,0 +1,168 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    line-height: 1.5;
+  }
+
+  code,
+  kbd,
+  pre,
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Visually hidden utility that stays focusable when :focus-within/:active */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: var(--z-modal);
+  padding: 0.625rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* High-contrast :focus-visible indicator */
+:where(a:any-link, button, input, select, textarea, [tabindex="0"], [role="tab"], [role="switch"]):focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Native <dialog> modal scroll containment */
+dialog:modal {
+  overscroll-behavior: contain;
+  margin: auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  max-width: min(92vw, 34rem);
+  width: 100%;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-modal);
+}
+
+dialog.studio-sheet:modal {
+  max-width: min(95vw, 30rem);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0 0 0 auto;
+  border-radius: 0;
+  border-right: 0;
+}
+
+dialog.studio-sheet-left:modal {
+  margin: 0 auto 0 0;
+  border-left: 0;
+  border-right: 1px solid var(--color-border-default);
+}
+
+dialog::backdrop {
+  background: rgb(15 23 42 / 0.45);
+  backdrop-filter: blur(2px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Native <progress> custom styling (separate -webkit- and -moz- rules) */
+progress.studio-progress {
+  appearance: none;
+  border: 0 solid;
+  overflow: clip;
+  container-type: inline-size;
+  inline-size: 100%;
+  block-size: 0.625rem;
+  border-radius: 1e5px;
+  background: var(--color-bg-muted);
+  --progress-bar-radius: 1e5px;
+  --progress-bar-fill: var(--color-primary);
+  --progress-bar-indeterminate-size: 30%;
+  --progress-bar-indeterminate-animation-duration: 1.5s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  progress.studio-progress {
+    --progress-bar-indeterminate-animation-duration: 10s;
+  }
+}
+
+progress.studio-progress:indeterminate {
+  --progress-bar-animation: var(
+    --progress-bar-indeterminate-animation,
+    progress-bar-indeterminate var(--progress-bar-indeterminate-animation-duration) infinite linear
+  );
+}
+
+progress.studio-progress::-webkit-progress-bar {
+  background: transparent;
+}
+
+progress.studio-progress::-webkit-progress-value {
+  background: var(--progress-bar-fill);
+  border-radius: var(--progress-bar-radius);
+  transition: inline-size var(--duration-normal) ease;
+  animation: var(--progress-bar-animation, revert-rule);
+}
+
+progress.studio-progress::-moz-progress-bar {
+  background: var(--progress-bar-fill);
+  border-radius: var(--progress-bar-radius);
+  transition: inline-size var(--duration-normal) ease;
+  animation: var(--progress-bar-animation, revert-rule);
+}
+
+@keyframes progress-bar-indeterminate {
+  from,
+  to {
+    inline-size: var(--progress-bar-indeterminate-size);
+    margin-right: auto;
+  }
+  from {
+    translate: -100%;
+  }
+  to {
+    translate: 100cqi;
+  }
+}
+
+/* Tab underline non-color active indicator */
+[role="tab"][aria-selected="true"]::after,
+[role="tab"][data-state="active"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  border-block-end: 2px solid var(--color-primary);
+}
+
+/* Checkerboard background for transparent PNG previews */
+.png-checkerboard {
+  background-color: var(--color-bg-canvas);
+  background-image:
+    linear-gradient(45deg, var(--color-bg-muted) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--color-bg-muted) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--color-bg-muted) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--color-bg-muted) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
