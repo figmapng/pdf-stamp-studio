@@ -22,7 +22,7 @@ export const kk = {
   },
   upload: {
     heading: 'PDF файлдарды жүктеу',
-    pdfSectionTitle: 'PDF құжаттар (макс. 50)',
+    pdfSectionTitle: 'PDF құжаттар (макс. 100)',
     dropzoneLabel: 'PDF файлдарын сүйреп әкеліңіз немесе таңдаңыз',
     dropzoneHint: 'Түпнұсқа файлдар өзгертілмейді',
     selectPdfBtn: 'PDF таңдау',
@@ -38,7 +38,7 @@ export const kk = {
     encryptedPdf: 'Қорғалған',
     cryptoSignedWarning: 'ЭЦҚ бар',
     formsWarning: 'Форма/аннотация',
-    limitWarning: 'Шектен асты (макс. 50 PDF). Алғашқы 50 файл алынды.',
+    limitWarning: 'Шектен асты (макс. 100 PDF). Алғашқы 100 файл алынды.',
     assetsQuickTitle: 'PNG активтер',
     nextStep: 'Келесі: Қол мен мөр',
   },

@@ -22,7 +22,7 @@ export const ru = {
   },
   upload: {
     heading: 'Загрузка PDF-файлов',
-    pdfSectionTitle: 'PDF-документы (макс. 50)',
+    pdfSectionTitle: 'PDF-документы (макс. 100)',
     dropzoneLabel: 'Перетащите PDF-файлы сюда или выберите',
     dropzoneHint: 'Исходные файлы остаются без изменений',
     selectPdfBtn: 'Выбрать PDF',
@@ -38,7 +38,7 @@ export const ru = {
     encryptedPdf: 'Зашифрован',
     cryptoSignedWarning: 'Есть ЭЦП',
     formsWarning: 'Формы/аннотации',
-    limitWarning: 'Превышен лимит (50 PDF). Приняты первые 50 файлов.',
+    limitWarning: 'Превышен лимит (100 PDF). Приняты первые 100 файлов.',
     assetsQuickTitle: 'PNG-активы',
     nextStep: 'Далее: Подпись и печать',
   },

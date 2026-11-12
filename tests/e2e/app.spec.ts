@@ -161,7 +161,7 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
     expect(uploadMethodRequests).toEqual([]);
   });
 
-  test('handles 50-PDF batch limit, Review Center numeric edits, and Apply-to-All dialog', async ({
+  test('handles 100-PDF batch limit and Apply-to-All dialog', async ({
     page,
   }) => {
     const sigBytes = await createTestPngBytes({ width: 120, height: 50 });
@@ -182,14 +182,15 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
 
     await page.goto('/');
 
-    // Upload 50 PDFs at once
-    const batchFiles = Array.from({ length: 50 }, (_, idx) => ({
+    // Upload 101 PDFs at once -> enforces 100-file batch limit with warning
+    const batchFiles = Array.from({ length: 101 }, (_, idx) => ({
       name: `batch-${idx + 1}.pdf`,
       mimeType: 'application/pdf',
       buffer: Buffer.from(samplePdf),
     }));
     await page.locator('input[type="file"][accept*="pdf"]').setInputFiles(batchFiles);
-    await expect(page.locator('tbody tr')).toHaveCount(50);
+    await expect(page.locator('tbody tr')).toHaveCount(100);
+    await expect(page.getByText(/макс\. 100 PDF/)).toBeVisible();
 
     // Setup profiles, signatures & stamp in Step 2
     await page.getByRole('button', { name: 'Келесі: Қол мен мөр' }).click();
@@ -207,8 +208,8 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
     await pngInputs.nth(2).setInputFiles({ name: 'stamp.png', mimeType: 'image/png', buffer: Buffer.from(stampBytes) });
 
     await page.getByRole('button', { name: 'Талдауды бастау' }).click();
-    await expect(page.locator('aside button')).toHaveCount(50);
-    await expect(page.getByRole('button', { name: 'Келесі: Экспорт' })).toBeEnabled({ timeout: 25000 });
+    await expect(page.locator('aside button')).toHaveCount(100);
+    await expect(page.getByRole('button', { name: 'Келесі: Экспорт' })).toBeEnabled({ timeout: 45000 });
     await expect(page.locator('canvas')).toBeVisible({ timeout: 10000 });
 
     // Already on Review Center for first doc -> click page to reposition & test native <dialog> Apply-to-All
@@ -595,5 +596,62 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
     await page.getByRole('button', { name: 'Бет бойынша' }).click();
     await expect(page.locator('canvas')).toHaveCount(1);
     await expect(page.getByText(/Бет \d+ \/ 3/)).toBeVisible();
+  });
+
+  test('renders mobile-responsive layout across all 4 steps with fitted PDF preview', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const sigBytes = await createTestPngBytes({ width: 120, height: 50 });
+    const stampBytes = await createTestPngBytes({ width: 100, height: 100 });
+    const samplePdf = await createCustomPdfFixture({
+      pageCount: 1,
+      texts: [
+        { text: 'Бас директор', x: 60, y: 240, size: 11 },
+        { text: 'А. Б. Серіков', x: 60, y: 175, size: 11 },
+      ],
+      lines: [{ x1: 60, y1: 200, x2: 200, y2: 200 }],
+    });
+
+    const assertNoPageHorizontalOverflow = async () => {
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(2);
+    };
+
+    await page.goto('/');
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({
+      name: 'mobile-contract.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(samplePdf),
+    });
+    await assertNoPageHorizontalOverflow();
+
+    await page.getByRole('button', { name: 'Келесі: Қол мен мөр' }).click();
+    await page.getByRole('button', { name: 'Қол қоюшы қосу' }).first().click();
+    await page.getByRole('button', { name: 'Мөр қосу' }).first().click();
+    await page.locator('input[name$="-fullName"]').nth(0).fill('Серіков Асылбек Бекболатұлы');
+    await page.locator('input[name$="-roles"]').nth(0).fill('Бас директор');
+
+    const pngInputs = page.locator('input[type="file"][accept*="png"]');
+    await pngInputs.nth(0).setInputFiles({ name: 'sig.png', mimeType: 'image/png', buffer: Buffer.from(sigBytes) });
+    await pngInputs.nth(1).setInputFiles({ name: 'stamp.png', mimeType: 'image/png', buffer: Buffer.from(stampBytes) });
+    await assertNoPageHorizontalOverflow();
+
+    await page.getByRole('button', { name: 'Талдауды бастау' }).click();
+    await expect(page.locator('aside').getByText('Дайын')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('canvas')).toBeVisible();
+    await assertNoPageHorizontalOverflow();
+
+    // Verify auto-fitted PDF canvas width fits inside mobile viewport (~<= 370px)
+    const canvasBox = await page.locator('canvas').boundingBox();
+    expect(canvasBox).not.toBeNull();
+    expect(canvasBox!.width).toBeLessThanOrEqual(370);
+
+    await page.getByRole('button', { name: 'Келесі: Экспорт' }).click();
+    await expect(page.getByText('mobile-contract.pdf')).toBeVisible();
+    await assertNoPageHorizontalOverflow();
   });
 });

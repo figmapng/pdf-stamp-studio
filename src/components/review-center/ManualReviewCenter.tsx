@@ -68,7 +68,11 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
   const { pushToast } = useToast();
   const [pageIndex, setPageIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'PLACED' | 'SINGLE'>('SINGLE');
-  const [zoom, setZoom] = useState(1.1);
+  const [zoom, setZoom] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < 640
+      ? Number(Math.max(0.45, Math.min(0.85, (window.innerWidth - 52) / 595)).toFixed(2))
+      : 1.1,
+  );
   const [sharedPdfDoc, setSharedPdfDoc] = useState<PdfJsDocumentProxy | null>(null);
   const viewerScrollRef = useRef<HTMLDivElement | null>(null);
   const viewerContentRef = useRef<HTMLDivElement | null>(null);
@@ -479,15 +483,15 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
         </Card>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-12">
-        {/* Left Document List */}
-        <aside className="max-h-[75vh] space-y-2 overflow-y-auto rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-3 shadow-[var(--shadow-xs)] lg:col-span-3">
+      <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
+        {/* Left Document List (compact horizontal strip on mobile, vertical sidebar on desktop) */}
+        <aside className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-2.5 shadow-[var(--shadow-xs)] sm:p-3 lg:col-span-3 lg:max-h-[75vh] lg:overflow-y-auto">
           {files.length === 0 ? (
             <p className="p-4 text-center text-xs text-[var(--color-text-muted)]">
               {t.analyze.noFilesYet}
             </p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1.5 lg:overflow-visible lg:pb-0">
               {files.map((file) => {
                 const doc = results[file.id];
                 const job = jobs[file.id];
@@ -503,7 +507,7 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
                   doc?.stampResults?.filter((s) => !s.skipped).length ?? 0;
 
                 return (
-                  <li key={file.id}>
+                  <li key={file.id} className="w-56 shrink-0 lg:w-full">
                     <button
                       type="button"
                       disabled={!doc}
@@ -586,7 +590,7 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
                 onPrevPage={() => setPageIndex((p) => Math.max(0, p - 1))}
                 onNextPage={() => setPageIndex((p) => Math.min(activeDoc.pageCount - 1, p + 1))}
                 onZoomIn={() => setZoom((z) => Math.min(2.2, Number((z + 0.15).toFixed(2))))}
-                onZoomOut={() => setZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
+                onZoomOut={() => setZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
                 onToggleCompare={() => setCompareOriginal((v) => !v)}
               />
 
@@ -598,7 +602,7 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
                 onTouchMove={() => {
                   userScrolledRef.current = true;
                 }}
-                className="max-h-[72vh] overflow-auto rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-subtle)] p-4 text-center"
+                className="max-h-[58vh] overflow-auto rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-subtle)] p-2 text-center sm:p-4 lg:max-h-[72vh]"
               >
                 <div ref={viewerContentRef}>
                   {viewMode === 'PLACED' && placedPages.length > 1 ? (

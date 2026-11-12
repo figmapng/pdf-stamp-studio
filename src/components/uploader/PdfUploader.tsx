@@ -156,7 +156,7 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
               <TableHeader>
                 <TableRow>
                   <TableHead>{t.upload.fileName}</TableHead>
-                  <TableHead>{t.upload.fileSize}</TableHead>
+                  <TableHead className="hidden sm:table-cell">{t.upload.fileSize}</TableHead>
                   <TableHead>{t.upload.pageCount}</TableHead>
                   <TableHead>{t.upload.integrity}</TableHead>
                   <TableHead className="text-right">{t.upload.actions}</TableHead>
@@ -168,10 +168,10 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" strokeWidth={1.75} aria-hidden="true" />
-                        <span className="max-w-[320px] truncate">{file.fileName}</span>
+                        <span className="max-w-[140px] truncate sm:max-w-[320px]">{file.fileName}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-[var(--color-text-secondary)] tabular-nums whitespace-nowrap">
+                    <TableCell className="hidden font-mono text-xs text-[var(--color-text-secondary)] tabular-nums whitespace-nowrap sm:table-cell">
                       {formatBytes(file.fileSize)}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-[var(--color-text-primary)] tabular-nums">

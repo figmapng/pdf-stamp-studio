@@ -189,8 +189,8 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
 
   return (
     <section aria-labelledby="profiles-heading" className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-start sm:gap-4">
           <h2 id="profiles-heading" className="text-base font-bold text-[var(--color-text-primary)]">
             {t.profiles.heading}
           </h2>
@@ -204,12 +204,12 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onAddSigner}>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <Button variant="outline" size="sm" onClick={onAddSigner} className="w-full sm:w-auto">
             <Plus className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             {t.profiles.addSignerBtn}
           </Button>
-          <Button variant="outline" size="sm" onClick={onAddStamp}>
+          <Button variant="outline" size="sm" onClick={onAddStamp} className="w-full sm:w-auto">
             <Stamp className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
             {t.profiles.addStampBtn}
           </Button>

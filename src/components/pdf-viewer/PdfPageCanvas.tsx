@@ -374,7 +374,7 @@ export const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({
                     width: `${toVisualPx(signer.anchor.placementBounds.width)}px`,
                     height: `${toVisualPx(signer.anchor.placementBounds.height)}px`,
                   }}
-                  className={`absolute cursor-move rounded border-2 ${
+                  className={`absolute touch-none cursor-move rounded border-2 ${
                     isActive ? palette.activeBox : palette.idleBox
                   }`}
                 >
@@ -403,7 +403,7 @@ export const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({
                       }
                       onPointerMove={handlePointerMoveItem}
                       onPointerUp={handlePointerUpItem}
-                      className="absolute -right-1.5 -bottom-1.5 h-3 w-3 cursor-nwse-resize rounded-full border-2 border-white bg-indigo-600 shadow-xs"
+                      className="absolute -right-2 -bottom-2 h-4 w-4 touch-none cursor-nwse-resize rounded-full border-2 border-white bg-indigo-600 shadow-xs sm:-right-1.5 sm:-bottom-1.5 sm:h-3 sm:w-3"
                     />
                   )}
                 </div>
@@ -438,7 +438,7 @@ export const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({
                   height: `${toVisualPx(stamp.placement.bounds.height)}px`,
                   transform: `rotate(${stamp.placement.rotation}deg)`,
                 }}
-                className={`absolute cursor-move rounded border-2 ${
+                className={`absolute touch-none cursor-move rounded border-2 ${
                   isActive ? palette.activeBox : palette.idleBox
                 }`}
               >
@@ -467,7 +467,7 @@ export const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({
                     }
                     onPointerMove={handlePointerMoveItem}
                     onPointerUp={handlePointerUpItem}
-                    className="absolute -right-1.5 -bottom-1.5 h-3 w-3 cursor-nwse-resize rounded-full border-2 border-white bg-rose-600 shadow-xs"
+                    className="absolute -right-2 -bottom-2 h-4 w-4 touch-none cursor-nwse-resize rounded-full border-2 border-white bg-rose-600 shadow-xs sm:-right-1.5 sm:-bottom-1.5 sm:h-3 sm:w-3"
                   />
                 )}
               </div>

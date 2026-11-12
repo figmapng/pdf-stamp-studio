@@ -219,12 +219,13 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             </span>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <Button
             size="sm"
             isLoading={isExporting}
             disabled={isExporting || eligibleDocs.length === 0}
             onClick={handleGenerateAll}
+            className="w-full sm:w-auto"
           >
             <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
             {t.exportPanel.generateAllBtn} ({eligibleDocs.length})
@@ -235,6 +236,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             size="sm"
             disabled={completedDocs.length === 0}
             onClick={handleDownloadZip}
+            className="w-full sm:w-auto"
           >
             <Archive className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
             {t.exportPanel.downloadZipBtn} ({completedDocs.length})
@@ -271,8 +273,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             <TableHeader>
               <TableRow>
                 <TableHead>{t.analyze.colFile}</TableHead>
-                <TableHead>{t.analyze.colPages}</TableHead>
-                <TableHead>{t.analyze.colStamp}</TableHead>
+                <TableHead className="hidden sm:table-cell">{t.analyze.colPages}</TableHead>
+                <TableHead className="hidden md:table-cell">{t.analyze.colStamp}</TableHead>
                 <TableHead>{t.analyze.colStatus}</TableHead>
                 <TableHead className="text-right">{t.upload.actions}</TableHead>
               </TableRow>
@@ -308,11 +310,11 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                               aria-hidden="true"
                             />
                           )}
-                          <span>{doc.fileName}</span>
+                          <span className="max-w-[140px] truncate sm:max-w-[300px]">{doc.fileName}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs tabular-nums">{doc.pageCount}</TableCell>
-                      <TableCell className="text-xs text-[var(--color-text-secondary)]">
+                      <TableCell className="hidden font-mono text-xs tabular-nums sm:table-cell">{doc.pageCount}</TableCell>
+                      <TableCell className="hidden text-xs text-[var(--color-text-secondary)] md:table-cell">
                         {sigPlaced} {t.review.placedCountLabel} · {stampPlaced}{' '}
                         {t.review.stampsCountLabel}
                       </TableCell>

@@ -5,7 +5,7 @@ export interface ExportValidationResult {
   reasons: string[];
 }
 
-export const MAX_PDF_BATCH_MVP = 50;
+export const MAX_PDF_BATCH_MVP = 100;
 export const MAX_PNG_FILE_BYTES = 15 * 1024 * 1024;
 export const MAX_PDF_FILE_BYTES = 100 * 1024 * 1024;
 

@@ -646,17 +646,17 @@ export const App: React.FC = () => {
 
           {/* Harmonized Header + Dedicated Horizontal Stepper */}
           <header className="sticky top-0 z-[var(--z-sticky)] border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]/95 backdrop-blur-xs">
-            <div className={`mx-auto flex h-13 w-full ${containerWidth} items-center justify-between gap-3 px-4 sm:px-5`}>
-              <div className="flex shrink-0 items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-secondary)] text-indigo-300">
+            <div className={`mx-auto flex h-13 w-full ${containerWidth} items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5`}>
+              <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-secondary)] text-indigo-300">
                   <Stamp className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                 </div>
-                <h1 className="text-sm font-bold tracking-tight text-[var(--color-text-primary)]">
+                <h1 className="truncate text-sm font-bold tracking-tight text-[var(--color-text-primary)]">
                   {t.app.title}
                 </h1>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
@@ -734,7 +734,7 @@ export const App: React.FC = () => {
             <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-canvas)]/70">
               <nav
                 aria-label="Primary"
-                className={`mx-auto flex w-full ${containerWidth} items-center gap-1 overflow-x-auto px-4 py-2 sm:px-5`}
+                className={`mx-auto flex w-full ${containerWidth} items-center gap-0.5 overflow-x-auto px-3 py-1.5 sm:gap-1 sm:px-5 sm:py-2`}
               >
                 {navTabs.map((tab, idx) => {
                   const isCurrent = activeTab === tab.id;
@@ -748,11 +748,11 @@ export const App: React.FC = () => {
                         aria-label={tab.label}
                         aria-current={isCurrent ? 'step' : undefined}
                         onClick={() => setActiveTab(tab.id)}
-                        className="group flex shrink-0 cursor-pointer items-center gap-2 rounded-[var(--radius-md)] px-1.5 py-1 text-left transition-colors hover:bg-[var(--color-bg-surface)]"
+                        className="group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-left transition-colors hover:bg-[var(--color-bg-surface)] sm:gap-2 sm:px-1.5"
                       >
                         <span
                           aria-hidden="true"
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition-colors sm:h-6 sm:w-6 sm:text-xs ${
                             isCurrent
                               ? 'bg-[var(--color-primary)] text-white shadow-[var(--shadow-xs)]'
                               : isCompleted
@@ -760,10 +760,10 @@ export const App: React.FC = () => {
                                 : 'border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)] group-hover:text-[var(--color-text-primary)]'
                           }`}
                         >
-                          {isCompleted ? <Check className="h-3.5 w-3.5" strokeWidth={2.25} /> : idx + 1}
+                          {isCompleted ? <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" strokeWidth={2.25} /> : idx + 1}
                         </span>
                         <span
-                          className={`text-xs whitespace-nowrap transition-colors ${
+                          className={`text-[11px] whitespace-nowrap transition-colors sm:text-xs ${
                             isCurrent
                               ? 'font-bold text-[var(--color-primary)]'
                               : isCompleted
@@ -778,7 +778,7 @@ export const App: React.FC = () => {
                       {idx < navTabs.length - 1 && (
                         <div
                           aria-hidden="true"
-                          className={`mx-1 h-px min-w-4 flex-1 transition-colors ${
+                          className={`mx-0.5 h-px min-w-2 flex-1 transition-colors sm:mx-1 sm:min-w-4 ${
                             isCompleted ? 'bg-[var(--color-primary)]/40' : 'bg-[var(--color-border-default)]'
                           }`}
                         />
@@ -791,7 +791,7 @@ export const App: React.FC = () => {
           </header>
 
           {/* Main Content */}
-          <main id="main-content" tabIndex={-1} className={`mx-auto w-full ${containerWidth} flex-1 space-y-4 px-4 py-4 sm:px-5`}>
+          <main id="main-content" tabIndex={-1} className={`mx-auto w-full ${containerWidth} flex-1 space-y-4 px-3 py-3 sm:px-5 sm:py-4`}>
           {activeTab === 'design-system' && <DesignSystemShowcase />}
 
           {activeTab === 'upload' && (
@@ -876,8 +876,8 @@ export const App: React.FC = () => {
         activeTab === 'profiles' ||
         activeTab === 'review' ||
         activeTab === 'export') && (
-        <div className="sticky bottom-0 z-[var(--z-sticky)] mt-auto border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]/95 backdrop-blur-xs">
-          <div className={`mx-auto flex h-14 w-full ${containerWidth} items-center justify-between gap-3 px-4 sm:px-5`}>
+        <div className="sticky bottom-0 z-[var(--z-sticky)] mt-auto border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xs">
+          <div className={`mx-auto flex h-14 w-full ${containerWidth} items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5`}>
             <div>
               {activeTab === 'profiles' && (
                 <Button variant="outline" size="md" onClick={() => setActiveTab('upload')}>
