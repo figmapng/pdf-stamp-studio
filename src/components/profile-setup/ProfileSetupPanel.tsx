@@ -1,8 +1,9 @@
-import React, { useId, useMemo } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Plus, Stamp, Trash2, UserCheck } from 'lucide-react';
 import type { PersonProfile, PngAsset, SignerConfig, StampConfig } from '../../types';
 import type { Translations } from '../../i18n';
 import { findSharedNameTokens } from '../../engine/text-normalizer';
+import { cn } from '../../lib/cn';
 import { Button, Card, CardContent, CardHeader, CardTitle, IconButton, Input, Switch } from '../ui';
 import { AssetManagerCard } from './AssetManagerCard';
 import { StampSettingsPanel } from '../stamp-settings/StampSettingsPanel';
@@ -41,6 +42,7 @@ interface SignerFormCardProps {
   index: number;
   signer: SignerConfig;
   accentClass: string;
+  isHighlighted?: boolean;
   onChange: (next: SignerConfig) => void;
   onRemove: () => void;
   t: Translations;
@@ -50,6 +52,7 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
   index,
   signer,
   accentClass,
+  isHighlighted = false,
   onChange,
   onRemove,
   t,
@@ -73,7 +76,13 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
   };
 
   return (
-    <Card className="flex h-full min-w-0 flex-col">
+    <Card
+      data-setup-card-id={`signer-${signer.id}`}
+      className={cn(
+        'flex h-full min-w-0 scroll-mt-24 flex-col transition-shadow duration-300',
+        isHighlighted && 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30',
+      )}
+    >
       <CardHeader className="px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span
@@ -172,6 +181,63 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
   t,
 }) => {
   const rememberSwitchId = useId();
+  const listGridRef = useRef<HTMLDivElement | null>(null);
+  const pendingAddKindRef = useRef<'SIGNER' | 'STAMP' | null>(null);
+  const prevCountRef = useRef({ signers: signers.length, stamps: stamps.length });
+  const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const prev = prevCountRef.current;
+    prevCountRef.current = { signers: signers.length, stamps: stamps.length };
+
+    const pendingKind = pendingAddKindRef.current;
+    if (!pendingKind) return;
+
+    let targetKey: string | null = null;
+    if (pendingKind === 'SIGNER' && signers.length > prev.signers) {
+      const added = signers[signers.length - 1];
+      if (added) targetKey = `signer-${added.id}`;
+    } else if (pendingKind === 'STAMP' && stamps.length > prev.stamps) {
+      const added = stamps[stamps.length - 1];
+      if (added) targetKey = `stamp-${added.id}`;
+    }
+
+    pendingAddKindRef.current = null;
+    if (!targetKey) return;
+
+    setHighlightedCardId(targetKey);
+    const rafId = requestAnimationFrame(() => {
+      const cardEl = listGridRef.current?.querySelector<HTMLElement>(
+        `[data-setup-card-id="${CSS.escape(targetKey)}"]`,
+      );
+      if (!cardEl) return;
+      cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const focusTarget = cardEl.querySelector<HTMLElement>('input[type="text"], select');
+      focusTarget?.focus({ preventScroll: true });
+    });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, [signers, stamps]);
+
+  useEffect(() => {
+    if (!highlightedCardId) return;
+    const timer = window.setTimeout(() => {
+      setHighlightedCardId(null);
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightedCardId]);
+
+  const handleAddSigner = () => {
+    pendingAddKindRef.current = 'SIGNER';
+    onAddSigner();
+  };
+
+  const handleAddStamp = () => {
+    pendingAddKindRef.current = 'STAMP';
+    onAddStamp();
+  };
   const hasSharedSurname = useMemo(() => {
     for (let i = 0; i < signers.length; i++) {
       for (let j = i + 1; j < signers.length; j++) {
@@ -205,11 +271,11 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-          <Button variant="outline" size="sm" onClick={onAddSigner} className="w-full sm:w-auto">
+          <Button variant="outline" size="sm" onClick={handleAddSigner} className="w-full sm:w-auto">
             <Plus className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
             {t.profiles.addSignerBtn}
           </Button>
-          <Button variant="outline" size="sm" onClick={onAddStamp} className="w-full sm:w-auto">
+          <Button variant="outline" size="sm" onClick={handleAddStamp} className="w-full sm:w-auto">
             <Stamp className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
             {t.profiles.addStampBtn}
           </Button>
@@ -253,13 +319,14 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div ref={listGridRef} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {signers.map((signer, index) => (
             <SignerFormCard
               key={signer.id}
               index={index}
               signer={signer}
               accentClass={SIGNER_ACCENTS[index % SIGNER_ACCENTS.length]!}
+              isHighlighted={highlightedCardId === `signer-${signer.id}`}
               onChange={(next) => onUpdateSigner(signer.id, next)}
               onRemove={() => onRemoveSigner(signer.id)}
               t={t}
@@ -272,6 +339,7 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
               index={index}
               stamp={stamp}
               signers={signers}
+              isHighlighted={highlightedCardId === `stamp-${stamp.id}`}
               onChange={(next) => onUpdateStamp(stamp.id, next)}
               onRemove={() => onRemoveStamp(stamp.id)}
               t={t}

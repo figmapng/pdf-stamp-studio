@@ -632,7 +632,14 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
 
     await page.getByRole('button', { name: 'Келесі: Қол мен мөр' }).click();
     await page.getByRole('button', { name: 'Қол қоюшы қосу' }).first().click();
+    await expect(page.locator('input[name$="-fullName"]').nth(0)).toBeFocused();
+    await page.getByRole('button', { name: 'Қол қоюшы қосу' }).first().click();
+    await expect(page.locator('input[name$="-fullName"]').nth(1)).toBeFocused();
+    await expect(page.locator('input[name$="-fullName"]').nth(1)).toBeInViewport();
+    await page.locator('[data-setup-card-id^="signer-"]').nth(1).getByRole('button').first().click();
+
     await page.getByRole('button', { name: 'Мөр қосу' }).first().click();
+    await expect(page.locator('[data-setup-card-id^="stamp-"] select').first()).toBeFocused();
     await page.locator('input[name$="-fullName"]').nth(0).fill('Серіков Асылбек Бекболатұлы');
     await page.locator('input[name$="-roles"]').nth(0).fill('Бас директор');
 

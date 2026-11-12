@@ -8,6 +8,7 @@ import type {
   StampOwner,
 } from '../../types';
 import type { Translations } from '../../i18n';
+import { cn } from '../../lib/cn';
 import { Card, CardContent, CardHeader, CardTitle, IconButton, Select } from '../ui';
 import { AssetManagerCard } from '../profile-setup/AssetManagerCard';
 
@@ -15,6 +16,7 @@ interface StampSettingsPanelProps {
   index: number;
   stamp: StampConfig;
   signers: SignerConfig[];
+  isHighlighted?: boolean;
   onChange: (next: StampConfig) => void;
   onRemove: () => void;
   t: Translations;
@@ -91,6 +93,7 @@ export const StampSettingsPanel: React.FC<StampSettingsPanelProps> = ({
   index,
   stamp,
   signers,
+  isHighlighted = false,
   onChange,
   onRemove,
   t,
@@ -132,7 +135,13 @@ export const StampSettingsPanel: React.FC<StampSettingsPanelProps> = ({
   ];
 
   return (
-    <Card className="flex h-full min-w-0 flex-col">
+    <Card
+      data-setup-card-id={`stamp-${stamp.id}`}
+      className={cn(
+        'flex h-full min-w-0 scroll-mt-24 flex-col transition-shadow duration-300',
+        isHighlighted && 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30',
+      )}
+    >
       <CardHeader className="px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] text-[var(--color-danger)]">
