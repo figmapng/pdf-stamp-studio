@@ -635,7 +635,7 @@ export const App: React.FC = () => {
   return (
     <ToastProvider>
       <TooltipProvider>
-        <div className="min-h-screen flex flex-col bg-[var(--color-bg-canvas)] text-[var(--color-text-primary)]">
+        <div className="min-h-screen flex flex-col overflow-x-clip bg-[var(--color-bg-canvas)] text-[var(--color-text-primary)]">
           <a href="#main-content" className="skip-link visually-hidden">
             {t.app.skipToContent}
           </a>
@@ -763,12 +763,12 @@ export const App: React.FC = () => {
                           {isCompleted ? <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" strokeWidth={2.25} /> : idx + 1}
                         </span>
                         <span
-                          className={`text-[11px] whitespace-nowrap transition-colors sm:text-xs ${
+                          className={`text-xs whitespace-nowrap transition-colors ${
                             isCurrent
                               ? 'font-bold text-[var(--color-primary)]'
                               : isCompleted
-                                ? 'font-semibold text-[var(--color-text-primary)]'
-                                : 'font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]'
+                                ? 'hidden font-semibold text-[var(--color-text-primary)] sm:inline'
+                                : 'hidden font-medium text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)] sm:inline'
                           }`}
                         >
                           {shortTitle}

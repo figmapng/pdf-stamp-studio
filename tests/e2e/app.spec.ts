@@ -622,11 +622,12 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
     };
 
     await page.goto('/');
-    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({
-      name: 'mobile-contract.pdf',
+    const sixPdfs = Array.from({ length: 6 }, (_, i) => ({
+      name: `mobile-contract-${i + 1}.pdf`,
       mimeType: 'application/pdf',
       buffer: Buffer.from(samplePdf),
-    });
+    }));
+    await page.locator('input[type="file"][accept*="pdf"]').setInputFiles(sixPdfs);
     await assertNoPageHorizontalOverflow();
 
     await page.getByRole('button', { name: 'Келесі: Қол мен мөр' }).click();
@@ -641,17 +642,41 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
     await assertNoPageHorizontalOverflow();
 
     await page.getByRole('button', { name: 'Талдауды бастау' }).click();
-    await expect(page.locator('aside').getByText('Дайын')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('aside').getByText('Дайын').first()).toBeVisible({ timeout: 20000 });
     await expect(page.locator('canvas')).toBeVisible();
     await assertNoPageHorizontalOverflow();
 
-    // Verify auto-fitted PDF canvas width fits inside mobile viewport (~<= 370px)
+    // Verify grid columns (<aside>, PDF viewer overlay, ReviewPanel action buttons) stay inside 390px viewport
+    const asideBox = await page.locator('aside').boundingBox();
+    expect(asideBox).not.toBeNull();
+    expect(asideBox!.x + asideBox!.width).toBeLessThanOrEqual(390);
+
     const canvasBox = await page.locator('canvas').boundingBox();
     expect(canvasBox).not.toBeNull();
     expect(canvasBox!.width).toBeLessThanOrEqual(370);
+    expect(canvasBox!.x).toBeGreaterThanOrEqual(0);
+    expect(canvasBox!.x + canvasBox!.width).toBeLessThanOrEqual(390);
+
+    const overlayBox = await page.locator('[data-overlay-item]').first().boundingBox();
+    expect(overlayBox).not.toBeNull();
+    expect(overlayBox!.x + overlayBox!.width).toBeLessThanOrEqual(390);
+
+    for (const label of ['Растау', 'Барлығына қолдану', 'Бұғаттау']) {
+      const btnBox = await page.getByRole('button', { name: label }).boundingBox();
+      expect(btnBox).not.toBeNull();
+      expect(btnBox!.x + btnBox!.width).toBeLessThanOrEqual(390);
+    }
 
     await page.getByRole('button', { name: 'Келесі: Экспорт' }).click();
-    await expect(page.getByText('mobile-contract.pdf')).toBeVisible();
+    await expect(page.getByText('mobile-contract-1.pdf')).toBeVisible();
+    await assertNoPageHorizontalOverflow();
+
+    await page.getByRole('button', { name: /PDF өңдеу/ }).click();
+    const downloadBtn = page.getByRole('button', { name: 'Жүктеу' }).first();
+    await expect(downloadBtn).toBeVisible({ timeout: 20000 });
+    const downloadBtnBox = await downloadBtn.boundingBox();
+    expect(downloadBtnBox).not.toBeNull();
+    expect(downloadBtnBox!.x + downloadBtnBox!.width).toBeLessThanOrEqual(390);
     await assertNoPageHorizontalOverflow();
   });
 });

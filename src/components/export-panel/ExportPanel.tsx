@@ -310,7 +310,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                               aria-hidden="true"
                             />
                           )}
-                          <span className="max-w-[140px] truncate sm:max-w-[300px]">{doc.fileName}</span>
+                          <span className="max-w-[115px] truncate sm:max-w-[300px]">{doc.fileName}</span>
                         </div>
                       </TableCell>
                       <TableCell className="hidden font-mono text-xs tabular-nums sm:table-cell">{doc.pageCount}</TableCell>
@@ -328,12 +328,13 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                           <Button
                             variant="outline"
                             size="sm"
+                            aria-label={t.exportPanel.downloadSingle}
                             onClick={() =>
                               triggerBrowserDownload(job.exportedUrl!, `stamped-${doc.fileName}`)
                             }
                           >
                             <Download className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                            {t.exportPanel.downloadSingle}
+                            <span className="hidden sm:inline">{t.exportPanel.downloadSingle}</span>
                           </Button>
                         )}
                       </TableCell>

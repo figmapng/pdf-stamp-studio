@@ -215,8 +215,14 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
       ?.pageIndex;
     const initialPage =
       firstStampPage ?? firstSignerPage ?? Math.max(0, activeDoc.pageCount - 1);
-    setPageIndex(Math.max(0, Math.min(Math.max(0, activeDoc.pageCount - 1), initialPage)));
+    const clampedPage = Math.max(0, Math.min(Math.max(0, activeDoc.pageCount - 1), initialPage));
+    setPageIndex(clampedPage);
     setViewMode(placedPages.length > 1 ? 'PLACED' : 'SINGLE');
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      const targetPageW = activeDoc.pages[clampedPage]?.width ?? 595;
+      const availW = Math.max(240, window.innerWidth - 48);
+      setZoom(Number(Math.max(0.35, Math.min(0.85, availW / targetPageW)).toFixed(2)));
+    }
   }, [activeDoc?.documentId]);
 
   // Automatically scroll the PDF preview so placed signatures and stamps appear in view immediately
@@ -483,9 +489,9 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
         </Card>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-12 lg:gap-5">
         {/* Left Document List (compact horizontal strip on mobile, vertical sidebar on desktop) */}
-        <aside className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-2.5 shadow-[var(--shadow-xs)] sm:p-3 lg:col-span-3 lg:max-h-[75vh] lg:overflow-y-auto">
+        <aside className="min-w-0 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-2.5 shadow-[var(--shadow-xs)] sm:p-3 lg:col-span-3 lg:max-h-[75vh] lg:overflow-y-auto">
           {files.length === 0 ? (
             <p className="p-4 text-center text-xs text-[var(--color-text-muted)]">
               {t.analyze.noFilesYet}
@@ -564,7 +570,7 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
         </aside>
 
         {/* Center Interactive PDF Preview */}
-        <div className="space-y-3 lg:col-span-6">
+        <div className="min-w-0 space-y-3 lg:col-span-6">
           {activeDoc &&
           activeFile &&
           activeFile.bytes.byteLength > 0 &&
@@ -602,9 +608,9 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
                 onTouchMove={() => {
                   userScrolledRef.current = true;
                 }}
-                className="max-h-[58vh] overflow-auto rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-subtle)] p-2 text-center sm:p-4 lg:max-h-[72vh]"
+                className="max-h-[58vh] overflow-auto rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-subtle)] p-2 sm:p-4 lg:max-h-[72vh]"
               >
-                <div ref={viewerContentRef}>
+                <div ref={viewerContentRef} className="mx-auto w-fit">
                   {viewMode === 'PLACED' && placedPages.length > 1 ? (
                     <div className="space-y-2.5">
                       {placedPages.map((pIdx) => (
@@ -668,7 +674,7 @@ export const ManualReviewCenter: React.FC<ManualReviewCenterProps> = ({
         </div>
 
         {/* Right Inspector & Actions */}
-        <div className="lg:col-span-3">
+        <div className="min-w-0 lg:col-span-3">
           {activeDoc ? (
             <ReviewPanel
               doc={activeDoc}

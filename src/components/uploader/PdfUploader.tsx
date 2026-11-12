@@ -168,7 +168,7 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 shrink-0 text-[var(--color-text-muted)]" strokeWidth={1.75} aria-hidden="true" />
-                        <span className="max-w-[140px] truncate sm:max-w-[320px]">{file.fileName}</span>
+                        <span className="max-w-[115px] truncate sm:max-w-[320px]">{file.fileName}</span>
                       </div>
                     </TableCell>
                     <TableCell className="hidden font-mono text-xs text-[var(--color-text-secondary)] tabular-nums whitespace-nowrap sm:table-cell">

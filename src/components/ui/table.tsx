@@ -50,9 +50,9 @@ export const TableHead: React.FC<React.ThHTMLAttributes<HTMLTableCellElement>> =
   className,
   scope = 'col',
   ...props
-}) => <th scope={scope} className={cn('px-3 py-3 font-semibold whitespace-nowrap', className)} {...props} />;
+}) => <th scope={scope} className={cn('px-2 py-2.5 font-semibold whitespace-nowrap sm:px-3 sm:py-3', className)} {...props} />;
 
 export const TableCell: React.FC<React.TdHTMLAttributes<HTMLTableCellElement>> = ({
   className,
   ...props
-}) => <td className={cn('px-3 py-2.5 align-middle', className)} {...props} />;
+}) => <td className={cn('px-2 py-2 align-middle sm:px-3 sm:py-2.5', className)} {...props} />;

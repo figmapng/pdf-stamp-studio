@@ -132,7 +132,7 @@ export const StampSettingsPanel: React.FC<StampSettingsPanelProps> = ({
   ];
 
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex h-full min-w-0 flex-col">
       <CardHeader className="px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] text-[var(--color-danger)]">

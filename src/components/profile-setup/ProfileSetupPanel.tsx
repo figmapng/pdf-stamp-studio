@@ -73,7 +73,7 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
   };
 
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex h-full min-w-0 flex-col">
       <CardHeader className="px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span
