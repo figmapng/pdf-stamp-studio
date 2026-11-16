@@ -1,28 +1,28 @@
 /**
  * =========================================================================
  * PDF Stamp Studio — Google Sheets Apps Script
- * Google Таблицалар үшін 1 кликпен қол мен мөр қойып, барлық беттерді PDF қылып шығару
+ * 1 кликпен қол мен мөр қойып, барлық беттерді PDF қылып шығару
  * =========================================================================
  */
 
-// 1. БАПТАУЛАР (Қолтаңбалар мен мөр параметрлері)
+// 1. БАПТАУЛАР
+// Мұнда Google Drive файлының сілтемесін (немесе ID-ін) қоясыз
 const CONFIG = {
-  // Файл атауының соңына қосылатын мәтін
   suffix: '_бекітілген',
 
-  // 1-қол қоюшы (Мысалы: Инженер-химик Затыбек А. А.)
+  // 1-қол қоюшы (Инженер-химик Затыбек А. А.)
   signer1: {
     enabled: true,
     keywords: ['Затыбек', 'Инженер-химик'],
-    // Сурет сілтемесі немесе Google Drive файлының ID-і:
+    // Өз қолтаңбаңыздың Google Drive сілтемесін немесе ID-ін қойыңыз:
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_zatybek.png',
-    offsetX: 70,   // оңға қарай ығысу (пиксель)
-    offsetY: -15,  // жоғары қарай ығысу (пиксель)
+    offsetX: 70,
+    offsetY: -15,
     width: 110,
     height: 42
   },
 
-  // 2-қол қоюшы (Мысалы: Зертхана меңгерушісі Сатыбалдина З. С.)
+  // 2-қол қоюшы (Зертхана меңгерушісі Сатыбалдина З. С.)
   signer2: {
     enabled: true,
     keywords: ['Сатыбалдина', 'Заведующий лабораторией'],
@@ -33,7 +33,7 @@ const CONFIG = {
     height: 42
   },
 
-  // Мөр (Печать)
+  // Мекеме мөрі
   stamp: {
     enabled: true,
     anchorKeyword: 'Сатыбалдина',
@@ -45,9 +45,6 @@ const CONFIG = {
   }
 };
 
-/**
- * Google Таблица ашылғанда жоғарғы мәзірге батырма қосу
- */
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📑 PDF Stamp')
@@ -55,19 +52,14 @@ function onOpen() {
     .addToUi();
 }
 
-/**
- * Негізгі орындалатын функция
- */
 function exportPdfWithSignaturesAndStamp() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
-
-  SpreadsheetApp.getActiveSpreadsheet().toast('Қолтаңбалар мен мөр орналастырылуда...', 'PDF Stamp', 3);
+  ss.toast('Қолтаңбалар мен мөр орналастырылуда...', 'PDF Stamp', 3);
 
   const addedImages = [];
 
   try {
-    // 1. Signer 1 қою
     if (CONFIG.signer1.enabled) {
       const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
       if (cell1) {
@@ -76,7 +68,6 @@ function exportPdfWithSignaturesAndStamp() {
       }
     }
 
-    // 2. Signer 2 қою
     if (CONFIG.signer2.enabled) {
       const cell2 = findCellByKeywords(ss, CONFIG.signer2.keywords);
       if (cell2) {
@@ -85,7 +76,6 @@ function exportPdfWithSignaturesAndStamp() {
       }
     }
 
-    // 3. Мөрді қою
     if (CONFIG.stamp.enabled) {
       const cellStamp = findCellByKeywords(ss, [CONFIG.stamp.anchorKeyword]);
       if (cellStamp) {
@@ -95,32 +85,23 @@ function exportPdfWithSignaturesAndStamp() {
     }
 
     SpreadsheetApp.flush();
-    Utilities.sleep(600); // Суреттер кестеге толық жатып үлгеруі үшін
+    Utilities.sleep(600);
 
-    // 4. Барлық парақтарды бір PDF қылып экспорттау
-    SpreadsheetApp.getActiveSpreadsheet().toast('PDF құжаты жиналуда...', 'PDF Stamp', 4);
+    ss.toast('PDF құжаты жиналуда...', 'PDF Stamp', 4);
     const pdfBlob = fetchSpreadsheetPdfBlob(ss);
-
-    // 5. Google Drive-қа сақтау (негізгі немесе ағымдағы папкаға)
     const fileName = ss.getName() + CONFIG.suffix + '.pdf';
     pdfBlob.setName(fileName);
     const pdfFile = DriveApp.createFile(pdfBlob);
 
-    // 6. Кестені тазалау (уақытша қойылған суреттерді өшіру)
+    // Таблица таза қалуы үшін қойылған уақытша суреттерді өшіреміз
     addedImages.forEach(img => {
-      try {
-        img.remove();
-      } catch (e) {
-        // елемеу
-      }
+      try { img.remove(); } catch (e) {}
     });
     SpreadsheetApp.flush();
 
-    // 7. Қолданушыға дайын PDF-ті ашу / жүктеу терезесін көрсету
     showDownloadDialog(ui, pdfFile.getUrl(), pdfFile.getDownloadUrl(), fileName);
 
   } catch (error) {
-    // Қате болған жағдайда да кестеде суреттер қалмауы үшін тазалаймыз
     addedImages.forEach(img => {
       try { img.remove(); } catch (e) {}
     });
@@ -129,131 +110,82 @@ function exportPdfWithSignaturesAndStamp() {
   }
 }
 
-/**
- * Ұяшықты мәтін кілтсөздері бойынша іздеу (соңғы беттерден бастап)
- */
 function findCellByKeywords(ss, keywords) {
   const sheets = ss.getSheets();
   for (let i = sheets.length - 1; i >= 0; i--) {
     const sheet = sheets[i];
     if (sheet.isSheetHidden()) continue;
-
     for (let k = 0; k < keywords.length; k++) {
       const kw = keywords[k].trim();
       if (!kw) continue;
-      const finder = sheet.createTextFinder(kw).matchEntireCell(false);
-      const match = finder.findNext();
-      if (match) {
-        return match;
-      }
+      const match = sheet.createTextFinder(kw).matchEntireCell(false).findNext();
+      if (match) return match;
     }
   }
   return null;
 }
 
 /**
- * Ұяшықтың үстіне суретті қою
+ * Google Drive сілтемесінен немесе ID-ден Blob алу
  */
-function insertImageOverCell(cell, itemConfig) {
-  const sheet = cell.getSheet();
-  const row = cell.getRow();
-  const col = cell.getColumn();
+function getImageBlob(urlOrId) {
+  if (!urlOrId) return null;
+  const str = urlOrId.trim();
 
-  let imgBlob;
-  if (itemConfig.imageUrl.startsWith('http://') || itemConfig.imageUrl.startsWith('https://')) {
-    const resp = UrlFetchApp.fetch(itemConfig.imageUrl, { muteHttpExceptions: true });
-    if (resp.getResponseCode() === 200) {
-      imgBlob = resp.getBlob();
+  // 1. Google Drive файлының сілтемесі немесе ID-і болса
+  if (str.includes('drive.google.com') || (!str.startsWith('http://') && !str.startsWith('https://'))) {
+    const match = str.match(/[-\w]{25,}/);
+    const fileId = match ? match[0] : str;
+    try {
+      return DriveApp.getFileById(fileId).getBlob();
+    } catch (e) {
+      // Drive-тан табылмаса
     }
-  } else {
-    // Google Drive File ID ретінде қарастыру
-    imgBlob = DriveApp.getFileById(itemConfig.imageUrl).getBlob();
   }
 
+  // 2. Кәдімгі веб-сілтеме болса
+  try {
+    const resp = UrlFetchApp.fetch(str, { muteHttpExceptions: true });
+    if (resp.getResponseCode() === 200) {
+      return resp.getBlob();
+    }
+  } catch (e) {}
+
+  return null;
+}
+
+function insertImageOverCell(cell, itemConfig) {
+  const sheet = cell.getSheet();
+  const imgBlob = getImageBlob(itemConfig.imageUrl);
   if (!imgBlob) return null;
 
-  const image = sheet.insertImage(imgBlob, col, row, itemConfig.offsetX, itemConfig.offsetY);
+  const image = sheet.insertImage(imgBlob, cell.getColumn(), cell.getRow(), itemConfig.offsetX, itemConfig.offsetY);
   image.setWidth(itemConfig.width);
   image.setHeight(itemConfig.height);
   return image;
 }
 
-/**
- * Google Sheets кестесін біртұтас PDF Blob ретінде алу
- */
 function fetchSpreadsheetPdfBlob(ss) {
-  const id = ss.getId();
-  const url = 'https://docs.google.com/spreadsheets/d/' + id + '/export?' +
-    'format=pdf' +
-    '&size=A4' +
-    '&portrait=true' +
-    '&fitw=true' +
-    '&gridlines=false' +
-    '&printtitle=false' +
-    '&sheetnames=false' +
-    '&fzr=false' +
-    '&horizontal_alignment=CENTER';
-
+  const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?' +
+    'format=pdf&size=A4&portrait=true&fitw=true&gridlines=false&printtitle=false&sheetnames=false&fzr=false';
   const res = UrlFetchApp.fetch(url, {
-    headers: {
-      'Authorization': 'Bearer ' + ScriptApp.getOAuthToken()
-    },
+    headers: { 'Authorization': 'Bearer ' + ScriptApp.getOAuthToken() },
     muteHttpExceptions: true
   });
-
   return res.getBlob();
 }
 
-/**
- * Дайын PDF-ті жүктеп алу немесе қарау үшін сұхбат терезесі
- */
 function showDownloadDialog(ui, viewUrl, downloadUrl, fileName) {
   const html = `
     <!DOCTYPE html>
     <html>
-      <head>
-        <base target="_blank">
-        <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            padding: 16px;
-            color: #1e293b;
-            text-align: center;
-          }
-          h3 { margin-top: 0; color: #0f172a; font-size: 16px; }
-          p { font-size: 13px; color: #64748b; margin-bottom: 20px; }
-          .btn {
-            display: block;
-            padding: 12px 20px;
-            margin: 8px 0;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 14px;
-            text-align: center;
-          }
-          .btn-primary {
-            background-color: #10b981;
-            color: white;
-          }
-          .btn-secondary {
-            background-color: #f1f5f9;
-            color: #334155;
-          }
-        </style>
-      </head>
-      <body>
-        <h3>🎉 Құжат дайын!</h3>
-        <p>Қол мен мөр қойылып, PDF сәтті жасалды:</p>
-        <a href="${downloadUrl}" class="btn btn-primary">⬇️ PDF Жүктеп алу</a>
-        <a href="${viewUrl}" class="btn btn-secondary">👁️ Google Drive-тан ашу</a>
+      <body style="font-family:sans-serif; text-align:center; padding:15px;">
+        <h3 style="color:#0f172a; margin-top:0;">🎉 Құжат дайын!</h3>
+        <p style="color:#64748b; font-size:13px;">Қол мен мөр қойылып, PDF сәтті жасалды:</p>
+        <a href="${downloadUrl}" target="_blank" style="display:block; background:#10b981; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; margin-bottom:8px;">⬇️ PDF Жүктеп алу</a>
+        <a href="${viewUrl}" target="_blank" style="display:block; background:#f1f5f9; color:#334155; padding:10px; border-radius:8px; text-decoration:none; font-size:13px;">👁️ Google Drive-тан қарау</a>
       </body>
     </html>
   `;
-
-  const htmlOutput = HtmlService.createHtmlOutput(html)
-    .setWidth(360)
-    .setHeight(220);
-
-  ui.showModalDialog(htmlOutput, 'PDF Stamp Studio');
+  ui.showModalDialog(HtmlService.createHtmlOutput(html).setWidth(360).setHeight(210), 'PDF Stamp Studio');
 }
