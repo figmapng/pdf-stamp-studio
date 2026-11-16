@@ -60,19 +60,20 @@ function onOpen() {
     .addItem('Шаг 1: ✍️ Поставить подписи и печать', 'step1PlaceSignaturesAndStamp')
     .addItem('Шаг 2: 🚀 Сохранить в PDF', 'step2ExportPdf')
     .addSeparator()
-    .addItem('🗑️ Очистить таблицу (удалить)', 'clearPlacedSignaturesAndStampsAlert')
+    .addItem('🧹 Убрать подписи и печать', 'clearPlacedSignaturesAndStampsAlert')
     .addItem('🔄 Сбросить позиции (по умолчанию)', 'resetToDefaultCoordsAlert')
     .addToUi();
 }
 
 /**
  * ШАГ 1: Поставить подписи и печать на лист
- * Экран автоматически прокручивается к месту подписи.
+ * Экран автоматически обновляется и прокручивается к месту подписи.
  * Пользователь может мышкой подвинуть подписи или печать в любое удобное место.
  */
 function step1PlaceSignaturesAndStamp() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
+  const currentSheet = ss.getActiveSheet();
 
   try {
     ss.toast('Размещение подписей и печати...', 'PDF Stamp', 2);
@@ -83,20 +84,63 @@ function step1PlaceSignaturesAndStamp() {
       return;
     }
 
-    // Автоматический переход к строке с подписями
     const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
-    if (cell1) {
-      try {
-        cell1.getSheet().activate();
-        cell1.activate();
-      } catch (e) {}
-    }
 
-    SpreadsheetApp.flush();
-    ss.toast('✅ Установлено! При необходимости подвиньте мышкой и нажмите Шаг 2.', 'PDF Stamp', 6);
+    // Принудительное обновление холста Google Sheets (Tab Toggle),
+    // чтобы подписи и печать мгновенно отобразились на экране без ручного переключения вкладок
+    forceUiRepaint(ss, currentSheet, cell1);
+
+    ss.toast('✅ Готово! Подписи и печать на месте. При необходимости подвиньте мышкой и нажмите Шаг 2.', 'PDF Stamp', 6);
 
   } catch (e) {
     ui.alert('Ошибка: ' + e.message);
+  }
+}
+
+/**
+ * Принудительное мгновенное обновление отображения холста Google Sheets
+ */
+function forceUiRepaint(ss, targetSheet, focusCell) {
+  try {
+    SpreadsheetApp.flush();
+    const sheets = ss.getSheets();
+    let otherSheet = null;
+
+    // Поиск любого другого листа в книге для кратковременного переключения
+    for (let i = 0; i < sheets.length; i++) {
+      if (sheets[i].getSheetId() !== targetSheet.getSheetId() && !sheets[i].isSheetHidden()) {
+        otherSheet = sheets[i];
+        break;
+      }
+    }
+
+    if (otherSheet) {
+      ss.setActiveSheet(otherSheet);
+      SpreadsheetApp.flush();
+      Utilities.sleep(100);
+      ss.setActiveSheet(targetSheet);
+      SpreadsheetApp.flush();
+    } else {
+      // Если лист в книге только один — создаем временный, переключаемся и удаляем
+      const tempSheet = ss.insertSheet('__refresh_temp__');
+      SpreadsheetApp.flush();
+      ss.setActiveSheet(tempSheet);
+      SpreadsheetApp.flush();
+      Utilities.sleep(80);
+      ss.setActiveSheet(targetSheet);
+      SpreadsheetApp.flush();
+      ss.deleteSheet(tempSheet);
+      SpreadsheetApp.flush();
+    }
+
+    // Фокус и прокрутка прямо к блоку подписей
+    if (focusCell) {
+      targetSheet.setActiveRange(focusCell);
+    }
+  } catch (e) {
+    try {
+      if (focusCell) targetSheet.setActiveRange(focusCell);
+    } catch (err) {}
   }
 }
 
@@ -201,7 +245,7 @@ function insertImageOverCell(cell, itemKey, defaultCfg) {
       const saved = JSON.parse(savedProps);
       if (saved && saved[itemKey]) {
         const s = saved[itemKey];
-        targetRow = Math.max(1, cell.getRow() + (s.deltaRow || 0));
+        targetRow = Math.max(1, cell.getRow() + (s.deltaRow !== undefined ? s.deltaRow : defaultCfg.rowOffset));
         targetCol = Math.max(1, cell.getColumn() + (s.deltaCol || 0));
         offX = Math.max(0, s.offsetX !== undefined ? s.offsetX : offX);
         offY = Math.max(0, s.offsetY !== undefined ? s.offsetY : offY);
@@ -216,6 +260,13 @@ function insertImageOverCell(cell, itemKey, defaultCfg) {
   image.setHeight(height);
   image.setAltTextDescription('PDF_STAMP_STUDIO_ASSET');
   image.setAltTextTitle(itemKey);
+
+  // Триггер перерисовки холста клиентом Google Таблицы
+  try {
+    image.setWidth(width + 1);
+    image.setWidth(width);
+  } catch (e) {}
+
   return image;
 }
 
@@ -285,11 +336,15 @@ function countPlacedImages(ss) {
 }
 
 /**
- * Очистка таблицы от подписей и печатей
+ * Безопасное снятие подписей и печатей с листа
  */
 function clearPlacedSignaturesAndStampsAlert() {
   clearPlacedSignaturesAndStamps();
-  SpreadsheetApp.getUi().alert('Очищено', 'Все подписи и печать успешно удалены из таблицы.', SpreadsheetApp.getUi().ButtonSet.OK);
+  SpreadsheetApp.getUi().alert(
+    'Подписи и печать убраны',
+    'Подписи и печать успешно убраны с листа.\nВсе данные, формулы и текст таблицы остались нетронутыми.',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 function clearPlacedSignaturesAndStamps() {
