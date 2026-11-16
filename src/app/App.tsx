@@ -71,8 +71,10 @@ import { ExportPanel } from '../components/export-panel/ExportPanel';
 import { SettingsPanel } from '../components/settings/SettingsPanel';
 import { DesignSystemShowcase } from '../components/showcase/DesignSystemShowcase';
 import { ExcelInstallModal } from '../components/modals/ExcelInstallModal';
+import { ExcelAddinConfigPanel } from '../components/excel-config/ExcelAddinConfigPanel';
 
 type ActiveTab =
+  | 'excel'
   | 'upload'
   | 'profiles'
   | 'review'
@@ -179,7 +181,7 @@ async function loadDefaultEcologyProfiles(): Promise<{ signers: SignerConfig[]; 
 
 export const App: React.FC = () => {
   const [language, setLanguage] = useState<AppLanguage>('ru');
-  const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('excel');
   const [excelModalOpen, setExcelModalOpen] = useState(false);
 
   const [files, setFiles] = useState<UploadedPdfFile[]>([]);
@@ -205,7 +207,12 @@ export const App: React.FC = () => {
   // Keep <html lang> and <title> synchronized
   useEffect(() => {
     document.documentElement.lang = language;
-    const tabTitle = activeTab === 'design-system' ? 'Design System' : t.nav[activeTab];
+    const tabTitle =
+      activeTab === 'excel'
+        ? (language === 'ru' ? 'Надстройка Excel' : 'Excel баптауы')
+        : activeTab === 'design-system'
+          ? 'Design System'
+          : t.nav[activeTab];
     document.title = `${t.app.title} — ${tabTitle}`;
   }, [language, activeTab, t]);
 
@@ -715,6 +722,7 @@ export const App: React.FC = () => {
   };
 
   const navTabs: Array<{ id: ActiveTab; label: string }> = [
+    { id: 'excel', label: language === 'ru' ? '⚡ Надстройка Excel' : '⚡ Excel баптауы' },
     { id: 'upload', label: t.nav.upload },
     { id: 'profiles', label: t.nav.profiles },
     { id: 'review', label: t.nav.review },
@@ -724,7 +732,7 @@ export const App: React.FC = () => {
   const containerWidth =
     activeTab === 'review' || activeTab === 'design-system'
       ? 'max-w-[1380px]'
-      : activeTab === 'profiles'
+      : activeTab === 'profiles' || activeTab === 'excel'
         ? 'max-w-6xl'
         : 'max-w-5xl';
   const activeStepIndex = navTabs.findIndex((tab) => tab.id === activeTab);
@@ -759,11 +767,11 @@ export const App: React.FC = () => {
                   type="button"
                   variant="primary"
                   size="sm"
-                  onClick={() => setExcelModalOpen(true)}
+                  onClick={() => setActiveTab('excel')}
                   className="hidden sm:inline-flex h-8 items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs"
                 >
                   <FileSpreadsheet className="h-3.5 w-3.5" strokeWidth={2} />
-                  {language === 'ru' ? '⚡ Кнопка в Excel' : '⚡ Excel батырмасы'}
+                  {language === 'ru' ? '⚡ Настройка Excel' : '⚡ Excel баптауы'}
                 </Button>
 
                 <Popover>
@@ -871,8 +879,8 @@ export const App: React.FC = () => {
               >
                 {navTabs.map((tab, idx) => {
                   const isCurrent = activeTab === tab.id;
-                  const isCompleted = activeStepIndex > idx;
-                  const isLocked = idx > 0 && !hasValidPdf;
+                  const isCompleted = activeStepIndex > idx && tab.id !== 'excel';
+                  const isLocked = tab.id !== 'excel' && tab.id !== 'upload' && !hasValidPdf;
                   const shortTitle = tab.label.replace(/^\d+\.\s*/, '');
 
                   return (
@@ -895,7 +903,13 @@ export const App: React.FC = () => {
                                 : 'border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)] group-hover:text-[var(--color-text-primary)]'
                           }`}
                         >
-                          {isCompleted ? <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" strokeWidth={2.25} /> : idx + 1}
+                          {tab.id === 'excel' ? (
+                            <FileSpreadsheet className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                          ) : isCompleted ? (
+                            <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" strokeWidth={2.25} />
+                          ) : (
+                            idx
+                          )}
                         </span>
                         <span
                           className={`text-xs whitespace-nowrap transition-colors ${
@@ -927,6 +941,7 @@ export const App: React.FC = () => {
 
           {/* Main Content */}
           <main id="main-content" tabIndex={-1} className={`mx-auto w-full ${containerWidth} flex-1 space-y-4 px-3 py-3 sm:px-5 sm:py-4`}>
+          {activeTab === 'excel' && <ExcelAddinConfigPanel />}
           {activeTab === 'design-system' && <DesignSystemShowcase />}
 
           {activeTab === 'upload' && (
