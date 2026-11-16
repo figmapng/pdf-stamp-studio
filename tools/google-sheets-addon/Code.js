@@ -1,8 +1,8 @@
 /**
  * =========================================================================
- * PDF Stamp Studio — Google Sheets Apps Script (V3 Толық нұсқа)
+ * PDF Stamp Studio — Google Sheets Apps Script (V4 Минметриялық бапталған)
  * ТОО «Ecology Expert» зертханалық хаттамалары үшін
- * 1 кликпен нақты қолдар мен мөрді қойып, біріктірілген PDF жасайды.
+ * Қолдар мен мөрді сызықтың қақ ортасына дәл орналастырады.
  * =========================================================================
  */
 
@@ -15,8 +15,9 @@ const CONFIG = {
     enabled: true,
     keywords: ['Затыбек', 'Инженер-химик'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_zatybek.png',
-    offsetX: 130,
-    offsetY: 0,
+    rowOffset: -1,   // Мәтіннен 1 қатар жоғары (қолды сызық үстіне көтеру үшін)
+    offsetX: 130,    // Солдан оңға қарай ығысу (сызықтың ортасы)
+    offsetY: 4,      // Пиксель бойынша биіктік
     width: 105,
     height: 55
   },
@@ -27,8 +28,9 @@ const CONFIG = {
     enabled: true,
     keywords: ['Сатыбалдина', 'Заведующий лабораторией'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_satybaldina.png',
-    offsetX: 160,
-    offsetY: 0,
+    rowOffset: -1,   // Мәтіннен 1 қатар жоғары
+    offsetX: 160,    // Солдан оңға қарай ығысу
+    offsetY: 14,     // Сызықтың тура үстінде тұруы үшін
     width: 110,
     height: 36
   },
@@ -39,15 +41,16 @@ const CONFIG = {
     enabled: true,
     anchorKeyword: 'Сатыбалдина',
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/stamp.png',
-    offsetX: 110,
-    offsetY: 0,
-    width: 90,
-    height: 90
+    rowOffset: -2,   // 2 қатар жоғары (мөрдің ортасы сызықты дәл кесіп өтуі үшін)
+    offsetX: 165,    // Қолтаңбаны басып, сызықтың үстінде тұратындай оңға жылжытылды
+    offsetY: 5,
+    width: 95,
+    height: 95
   }
 };
 
 /**
- * Google Таблица ашылғанда жоғарғы мәзірге '📑 PDF Stamp' батырмасын қосады.
+ * Google Таблица ашылғанда жоғарғы мәзірге батырмаларды қосады.
  */
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -59,7 +62,7 @@ function onOpen() {
 }
 
 /**
- * Негізгі команда: Қолдар мен мөрді кестеге қояды және PDF жасап береді
+ * Негізгі команда: Қолдар мен мөрді қойып, біріктірілген PDF жасап береді
  */
 function exportPdfWithSignaturesAndStamp() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -75,7 +78,6 @@ function exportPdfWithSignaturesAndStamp() {
       return;
     }
 
-    // Google бұлттық жүйесі суреттерді толық сақтап үлгеруі үшін күтеміз
     SpreadsheetApp.flush();
     Utilities.sleep(2000);
 
@@ -86,7 +88,7 @@ function exportPdfWithSignaturesAndStamp() {
     pdfBlob.setName(fileName);
     const pdfFile = DriveApp.createFile(pdfBlob);
 
-    // 3. Жүктеу терезесін ашамыз
+    // 3. Жүктеу терезесі
     showDownloadDialog(ui, pdfFile.getUrl(), pdfFile.getDownloadUrl(), fileName);
 
   } catch (error) {
@@ -95,7 +97,7 @@ function exportPdfWithSignaturesAndStamp() {
 }
 
 /**
- * Тек қолдар мен мөрді кестеге орналастыру (PDF жасамай, кестеде көру үшін)
+ * Тек қолдар мен мөрді кестеге орналастыру (кестеде көзбен тексеру үшін)
  */
 function placeSignaturesAndStampOnly() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -104,7 +106,7 @@ function placeSignaturesAndStampOnly() {
     const count = placeImagesOnSheet(ss);
     SpreadsheetApp.flush();
     if (count > 0) {
-      ui.alert('✅ Сәтті орнатылды!', count + ' сурет (қолтаңбалар мен мөр) кестедегі сызықтардың үстіне қойылды.', ui.ButtonSet.OK);
+      ui.alert('✅ Сәтті орнатылды!', count + ' сурет (қолтаңбалар мен мөр) кестедегі сызықтардың дәл үстіне қойылды.', ui.ButtonSet.OK);
     } else {
       ui.alert('⚠️ Қате: Кестеден «Затыбек» немесе «Сатыбалдина» табылмады.');
     }
@@ -114,44 +116,36 @@ function placeSignaturesAndStampOnly() {
 }
 
 /**
- * Қолдар мен мөрді ұяшықтарға қою функциясы
+ * Қолдар мен мөрді ұяшықтарға орналастыру
  */
 function placeImagesOnSheet(ss) {
-  // Алдымен бұрын қойылған ескі қол/мөрлерді тазалаймыз (қайталанбауы үшін):
   clearPlacedSignaturesAndStamps(false);
-
   let placedCount = 0;
 
-  // 1. Инженер-химик Затыбек А. А.
+  // 1. Затыбек А. А. қолы
   if (CONFIG.signer1.enabled) {
     const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
     if (cell1) {
       const img1 = insertImageOverCell(cell1, CONFIG.signer1);
       if (img1) placedCount++;
-    } else {
-      Logger.log('Табылмады: ' + CONFIG.signer1.name);
     }
   }
 
-  // 2. Зертхана меңгерушісі Сатыбалдина З. С.
+  // 2. Сатыбалдина З. С. қолы
   if (CONFIG.signer2.enabled) {
     const cell2 = findCellByKeywords(ss, CONFIG.signer2.keywords);
     if (cell2) {
       const img2 = insertImageOverCell(cell2, CONFIG.signer2);
       if (img2) placedCount++;
-    } else {
-      Logger.log('Табылмады: ' + CONFIG.signer2.name);
     }
   }
 
-  // 3. Зертхана мөрі (Сатыбалдина ұяшығының тұсына қойылады)
+  // 3. ТОО «Ecology Expert» мөрі
   if (CONFIG.stamp.enabled) {
     const cellStamp = findCellByKeywords(ss, [CONFIG.stamp.anchorKeyword]);
     if (cellStamp) {
       const imgStamp = insertImageOverCell(cellStamp, CONFIG.stamp);
       if (imgStamp) placedCount++;
-    } else {
-      Logger.log('Табылмады: ' + CONFIG.stamp.name);
     }
   }
 
@@ -159,7 +153,7 @@ function placeImagesOnSheet(ss) {
 }
 
 /**
- * Суретті желіден жүктеп ұяшық үстіне дұрыс координатамен қою
+ * Суретті жүктеп ұяшық үстіне нақты қатар бойынша қою
  */
 function insertImageOverCell(cell, itemConfig) {
   const sheet = cell.getSheet();
@@ -168,11 +162,14 @@ function insertImageOverCell(cell, itemConfig) {
     throw new Error(itemConfig.name + ' суреті жүктелмеді (HTTP ' + resp.getResponseCode() + ')');
   }
 
-  // Офсеттер тек оң (>= 0) сан болуы тиіс:
+  // rowOffset арқылы қажетті қатарды таңдаймыз:
+  const rOffset = itemConfig.rowOffset || 0;
+  const targetRow = Math.max(1, cell.getRow() + rOffset);
+
   const offX = Math.max(0, itemConfig.offsetX || 0);
   const offY = Math.max(0, itemConfig.offsetY || 0);
 
-  const image = sheet.insertImage(resp.getBlob(), cell.getColumn(), cell.getRow(), offX, offY);
+  const image = sheet.insertImage(resp.getBlob(), cell.getColumn(), targetRow, offX, offY);
   image.setWidth(itemConfig.width);
   image.setHeight(itemConfig.height);
   image.setAltTextDescription('PDF_STAMP_STUDIO_ASSET');
@@ -180,7 +177,7 @@ function insertImageOverCell(cell, itemConfig) {
 }
 
 /**
- * Бұрын осы скрипт қойған қолдар мен мөрлерді өшіру
+ * Қойылған қолдар мен мөрлерді өшіру
  */
 function clearPlacedSignaturesAndStamps(showAlert = true) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -206,10 +203,9 @@ function clearPlacedSignaturesAndStamps(showAlert = true) {
 }
 
 /**
- * Кесте ішінен қажетті сөздерді іздеу (Алдымен белсенді парақтан қарайды)
+ * Кесте ішінен сөздерді табу
  */
 function findCellByKeywords(ss, keywords) {
-  // 1. Белсенді парақтан (қазір ашылып тұрған парақтан) іздейміз:
   const activeSheet = ss.getActiveSheet();
   for (let k = 0; k < keywords.length; k++) {
     const kw = keywords[k].trim();
@@ -218,7 +214,6 @@ function findCellByKeywords(ss, keywords) {
     if (match) return match;
   }
 
-  // 2. Басқа барлық парақтардан іздейміз:
   const sheets = ss.getSheets();
   for (let i = 0; i < sheets.length; i++) {
     const sheet = sheets[i];
@@ -235,7 +230,7 @@ function findCellByKeywords(ss, keywords) {
 }
 
 /**
- * Google Sheets-ті PDF етіп экспорттау (барлық парақтары бірігеді)
+ * Google Sheets-ті толық PDF қылып экспорттау
  */
 function fetchSpreadsheetPdfBlob(ss) {
   const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?' +
@@ -251,7 +246,7 @@ function fetchSpreadsheetPdfBlob(ss) {
 }
 
 /**
- * Дайын PDF жүктеу терезесі
+ * Жүктеу терезесі
  */
 function showDownloadDialog(ui, viewUrl, downloadUrl, fileName) {
   const html = `
