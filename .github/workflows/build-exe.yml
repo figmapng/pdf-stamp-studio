@@ -1,0 +1,55 @@
+name: Build Windows Exe
+
+on:
+  push:
+    paths:
+      - 'tools/excel-stamp-addin/**'
+      - '.github/workflows/build-exe.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Compile Standalone Exe with PyInstaller
+        run: |
+          pyinstaller --onefile --noconsole --name "PdfStampSetup" --add-data "tools/excel-stamp-addin/vba/PdfStampModule.bas;vba" --add-data "tools/excel-stamp-addin/install.ps1;." tools/excel-stamp-addin/PdfStampConfigurator.py
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PdfStampSetup-Windows
+          path: dist/PdfStampSetup.exe
+
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/main')
+        with:
+          tag_name: v1.0.0-addin
+          name: "PDF Stamp Studio — Excel Addin v1.0.0"
+          body: |
+            ## 🚀 Excel Add-in & Windows Баптау бағдарламасы
+            
+            Қарапайым жұмысшыларға арналған 1 кликпен Excel хаттамаларына қол қойып, мөр басатын бағдарлама.
+            
+            ### Жүктеп алу:
+            Төмендегі **PdfStampSetup.exe** файлын жүктеп алып, 2 рет басып ашыңыз.
+          files: dist/PdfStampSetup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
