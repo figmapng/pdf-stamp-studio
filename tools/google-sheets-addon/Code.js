@@ -14,11 +14,10 @@ const CONFIG = {
     enabled: true,
     keywords: ['Затыбек', 'Инженер-химик'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_zatybek.png',
-    rowOffset: -1,
-    offsetX: 130,
-    offsetY: 4,
+    offsetX: 130,   // Сызықтың тура ортасы
+    offsetY: -22,   // Сызықтың үстіне дәл көтеру
     width: 105,
-    height: 55
+    height: 60
   },
 
   // 2-қол қоюшы: Зертхана меңгерушісі Сатыбалдина З. С.
@@ -27,11 +26,10 @@ const CONFIG = {
     enabled: true,
     keywords: ['Сатыбалдина', 'Заведующий лабораторией'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_satybaldina.png',
-    rowOffset: -1,
-    offsetX: 160,
-    offsetY: 14,
+    offsetX: 160,   // Сызықтың тура ортасы
+    offsetY: -15,   // Сызықтың үстінде
     width: 110,
-    height: 36
+    height: 38
   },
 
   // Мекеме мөрі: ТОО «Ecology Expert» Аналитикалық зертхана хаттамалары үшін
@@ -40,16 +38,15 @@ const CONFIG = {
     enabled: true,
     anchorKeyword: 'Сатыбалдина',
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/stamp.png',
-    rowOffset: -2,
-    offsetX: 165,
-    offsetY: 5,
+    offsetX: 160,   // Қолтаңбаны басып тұратындай оңға қойылды
+    offsetY: -48,   // Мөрдің ортасы сызықты дәл кесіп өтеді
     width: 95,
     height: 95
   }
 };
 
 /**
- * Қарапайым әрі түсінікті 2 қадамдық мәзір
+ * 2 қадамдық қарапайым мәзір
  */
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -57,36 +54,37 @@ function onOpen() {
     .addItem('1-қадам: ✍️ Қол мен мөрді қою', 'step1PlaceSignaturesAndStamp')
     .addItem('2-қадам: 🚀 PDF сақтау', 'step2ExportPdf')
     .addSeparator()
-    .addItem('🗑️ Кестені тазалау (қолдарды өшіру)', 'clearPlacedSignaturesAndStampsAlert')
+    .addItem('🗑️ Кестені тазалау (өшіру)', 'clearPlacedSignaturesAndStampsAlert')
     .addToUi();
 }
 
 /**
  * 1-ҚАДАМ: Қол мен мөрді кестеге қою
- * Экранды автоматты түрде қолдар тұрған жерге апарады.
- * Пайдаланушы қажет болса тышқанмен жылжыта алады.
+ * Экранды автоматты жаңартады (басқа листке өтіп-қайтуды скрипт өзі лезде жасайды)
  */
 function step1PlaceSignaturesAndStamp() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
 
   try {
-    ss.toast('Қолтаңбалар мен мөр кестеге қойылуда...', 'PDF Stamp', 3);
+    // Ескі сақталған қате координаталар болса өшіреміз:
+    PropertiesService.getDocumentProperties().deleteAllProperties();
+
+    ss.toast('Қолтаңбалар мен мөр қойылуда...', 'PDF Stamp', 2);
     const count = placeImagesOnSheet(ss);
-    SpreadsheetApp.flush();
 
     if (count === 0) {
       ui.alert('⚠️ Қате', 'Кестеден «Затыбек» немесе «Сатыбалдина» сөздері табылмады!\nБелсенді парақты ашып қайта басыңыз.', ui.ButtonSet.OK);
       return;
     }
 
-    // Экранды қолтаңбалар тұрған жерге жылжытамыз
+    const currentSheet = ss.getActiveSheet();
     const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
-    if (cell1) {
-      cell1.activate();
-    }
 
-    ss.toast('✅ Қолдар мен мөр қойылды! Тексеріп, 2-қадамды басыңыз.', 'PDF Stamp', 6);
+    // Браузер суреттерді бірден көрсетуі үшін парақты 0.1 секундқа жаңартамыз (redraw):
+    refreshSheetCanvas(ss, currentSheet, cell1);
+
+    ss.toast('✅ Қолдар мен мөр сызыққа қойылды! Енді 2-қадамды басыңыз.', 'PDF Stamp', 5);
 
   } catch (e) {
     ui.alert('Қате: ' + e.message);
@@ -94,9 +92,7 @@ function step1PlaceSignaturesAndStamp() {
 }
 
 /**
- * 2-ҚАДАМ: PDF сақтау
- * Егер пайдаланушы суреттерді мышкамен сәл жылжытса, жаңа орнын автоматты түрде сақтайды.
- * Біріктірілген таза PDF құжатын жүктеп береді.
+ * 2-ҚАДАМ: Дайын PDF файлын жасап, жүктеп алу
  */
 function step2ExportPdf() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -105,21 +101,19 @@ function step2ExportPdf() {
   try {
     const existingCount = countPlacedImages(ss);
 
-    // Егер 1-қадам басылмаған болса, өзі автоматты түрде қойып береді
+    // Егер 1-қадам басылмаған болса, өзі қойып алады
     if (existingCount === 0) {
-      ss.toast('Қолдар мен мөр қойылуда...', 'PDF Stamp', 3);
+      ss.toast('Қолдар мен мөр қойылуда...', 'PDF Stamp', 2);
       const placed = placeImagesOnSheet(ss);
       if (placed === 0) {
         ui.alert('⚠️ Қате: Кестеден қол қоюшылар табылмады!');
         return;
       }
       SpreadsheetApp.flush();
-      Utilities.sleep(1500);
+      Utilities.sleep(1200);
     } else {
-      // Пайдаланушы тышқанмен жылжытқан жаңа орынды автоматты сақтаймыз
-      saveCurrentPositions();
       SpreadsheetApp.flush();
-      Utilities.sleep(1000);
+      Utilities.sleep(800);
     }
 
     ss.toast('PDF құжаты дайындалуда...', 'PDF Stamp', 4);
@@ -128,7 +122,6 @@ function step2ExportPdf() {
     pdfBlob.setName(fileName);
     const pdfFile = DriveApp.createFile(pdfBlob);
 
-    // Жүктеу терезесі
     showDownloadDialog(ui, pdfFile.getUrl(), pdfFile.getDownloadUrl(), fileName);
 
   } catch (error) {
@@ -137,7 +130,7 @@ function step2ExportPdf() {
 }
 
 /**
- * Суреттерді кестеге орналастыру (сақталған орындарды ескереді)
+ * Суреттерді кестеге қою
  */
 function placeImagesOnSheet(ss) {
   clearPlacedSignaturesAndStamps();
@@ -147,7 +140,7 @@ function placeImagesOnSheet(ss) {
   if (CONFIG.signer1.enabled) {
     const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
     if (cell1) {
-      const img1 = insertImageOverCell(cell1, 'signer1', CONFIG.signer1);
+      const img1 = insertImageOverCell(cell1, CONFIG.signer1);
       if (img1) placedCount++;
     }
   }
@@ -156,7 +149,7 @@ function placeImagesOnSheet(ss) {
   if (CONFIG.signer2.enabled) {
     const cell2 = findCellByKeywords(ss, CONFIG.signer2.keywords);
     if (cell2) {
-      const img2 = insertImageOverCell(cell2, 'signer2', CONFIG.signer2);
+      const img2 = insertImageOverCell(cell2, CONFIG.signer2);
       if (img2) placedCount++;
     }
   }
@@ -165,7 +158,7 @@ function placeImagesOnSheet(ss) {
   if (CONFIG.stamp.enabled) {
     const cellStamp = findCellByKeywords(ss, [CONFIG.stamp.anchorKeyword]);
     if (cellStamp) {
-      const imgStamp = insertImageOverCell(cellStamp, 'stamp', CONFIG.stamp);
+      const imgStamp = insertImageOverCell(cellStamp, CONFIG.stamp);
       if (imgStamp) placedCount++;
     }
   }
@@ -174,86 +167,42 @@ function placeImagesOnSheet(ss) {
 }
 
 /**
- * Суретті жүктеп ұяшық үстіне қою
+ * Ұяшық үстіне сурет қою
  */
-function insertImageOverCell(cell, itemKey, defaultCfg) {
-  const cfg = getEffectiveConfig(itemKey, defaultCfg);
+function insertImageOverCell(cell, itemConfig) {
   const sheet = cell.getSheet();
-  const resp = UrlFetchApp.fetch(cfg.imageUrl, { muteHttpExceptions: true });
+  const resp = UrlFetchApp.fetch(itemConfig.imageUrl, { muteHttpExceptions: true });
   if (resp.getResponseCode() !== 200) {
-    throw new Error(cfg.name + ' суреті жүктелмеді (HTTP ' + resp.getResponseCode() + ')');
+    throw new Error(itemConfig.name + ' суреті жүктелмеді');
   }
 
-  const rOffset = cfg.rowOffset || 0;
-  const targetRow = Math.max(1, cell.getRow() + rOffset);
-
-  const offX = Math.max(0, cfg.offsetX || 0);
-  const offY = Math.max(0, cfg.offsetY || 0);
-
-  const image = sheet.insertImage(resp.getBlob(), cell.getColumn(), targetRow, offX, offY);
-  image.setWidth(cfg.width);
-  image.setHeight(cfg.height);
+  const image = sheet.insertImage(resp.getBlob(), cell.getColumn(), cell.getRow(), itemConfig.offsetX, itemConfig.offsetY);
+  image.setWidth(itemConfig.width);
+  image.setHeight(itemConfig.height);
   image.setAltTextDescription('PDF_STAMP_STUDIO_ASSET');
-  image.setAltTextTitle(itemKey);
   return image;
 }
 
 /**
- * Пайдаланушы мышкамен жылжытқан жаңа орынды жадыға автоматты сақтау
+ * Браузер суреттерді бірден көрсетуі үшін (экранды автоматты жаңарту)
  */
-function saveCurrentPositions() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+function refreshSheetCanvas(ss, currentSheet, focusCell) {
+  SpreadsheetApp.flush();
   const sheets = ss.getSheets();
-  const saved = {};
-
-  sheets.forEach(sheet => {
-    sheet.getImages().forEach(img => {
-      if (img.getAltTextDescription() === 'PDF_STAMP_STUDIO_ASSET') {
-        const key = img.getAltTextTitle();
-        if (key && CONFIG[key]) {
-          const anchor = img.getAnchorCell();
-          const keywordCell = findCellByKeywords(ss, CONFIG[key].keywords || [CONFIG[key].anchorKeyword]);
-          let rOffset = 0;
-          if (keywordCell) {
-            rOffset = anchor.getRow() - keywordCell.getRow();
-          }
-          saved[key] = {
-            rowOffset: rOffset,
-            offsetX: img.getAnchorCellXOffset(),
-            offsetY: img.getAnchorCellYOffset(),
-            width: img.getWidth(),
-            height: img.getHeight()
-          };
-        }
-      }
-    });
-  });
-
-  if (Object.keys(saved).length > 0) {
-    PropertiesService.getDocumentProperties().setProperty('CUSTOM_COORDS', JSON.stringify(saved));
+  const otherSheet = sheets.find(s => s.getSheetId() !== currentSheet.getSheetId() && !s.isSheetHidden());
+  if (otherSheet) {
+    ss.setActiveSheet(otherSheet);
+    SpreadsheetApp.flush();
+    Utilities.sleep(100);
+    ss.setActiveSheet(currentSheet);
+    if (focusCell) {
+      currentSheet.setActiveRange(focusCell);
+    }
+    SpreadsheetApp.flush();
+  } else if (focusCell) {
+    currentSheet.setActiveRange(focusCell);
+    SpreadsheetApp.flush();
   }
-}
-
-/**
- * Сақталған баптауды алу
- */
-function getEffectiveConfig(itemKey, defaultCfg) {
-  const savedProps = PropertiesService.getDocumentProperties().getProperty('CUSTOM_COORDS');
-  if (savedProps) {
-    try {
-      const custom = JSON.parse(savedProps);
-      if (custom && custom[itemKey]) {
-        return Object.assign({}, defaultCfg, {
-          offsetX: custom[itemKey].offsetX,
-          offsetY: custom[itemKey].offsetY,
-          width: custom[itemKey].width,
-          height: custom[itemKey].height,
-          rowOffset: custom[itemKey].rowOffset !== undefined ? custom[itemKey].rowOffset : defaultCfg.rowOffset
-        });
-      }
-    } catch (e) {}
-  }
-  return defaultCfg;
 }
 
 /**
@@ -293,7 +242,7 @@ function clearPlacedSignaturesAndStamps() {
 }
 
 /**
- * Кестеден іздеу
+ * Кестеден сөздер бойынша іздеу
  */
 function findCellByKeywords(ss, keywords) {
   const activeSheet = ss.getActiveSheet();
