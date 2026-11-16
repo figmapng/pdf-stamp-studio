@@ -48,8 +48,8 @@ jobs:
 
       - name: Copy Exe to public/download
         run: |
-          mkdir -p public/download
-          cp dist/PdfStampSetup.exe public/download/PdfStampSetup.exe
+          if (!(Test-Path "public/download")) { New-Item -ItemType Directory -Path "public/download" -Force }
+          Copy-Item -Path "dist/PdfStampSetup.exe" -Destination "public/download/PdfStampSetup.exe" -Force
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
