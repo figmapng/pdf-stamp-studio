@@ -130,6 +130,30 @@ class DesktopApi:
         except subprocess.CalledProcessError as e:
             return {"success": False, "error": e.stderr or e.stdout}
 
+    def uninstallExcelAddin(self) -> dict:
+        """Удаляет надстройку из Excel."""
+        base = get_base_dir()
+        install_script = os.path.join(base, 'tools', 'excel-stamp-addin', 'install.ps1')
+        if not os.path.exists(install_script):
+            install_script = os.path.join(os.path.dirname(__file__), '..', 'excel-stamp-addin', 'install.ps1')
+
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", install_script,
+            "-Uninstall"
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            return {"success": True, "output": res.stdout}
+        except subprocess.CalledProcessError as e:
+            return {"success": False, "error": e.stderr or e.stdout}
+
+    def isDesktop(self) -> bool:
+        """Возвращает True если приложение запущено на рабочем столе Windows."""
+        return True
+
 def main():
     port = get_free_port()
     server = start_server(port)

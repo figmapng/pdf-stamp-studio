@@ -4,6 +4,8 @@ import {
   ArrowRight,
   Check,
   Download,
+  FileSpreadsheet,
+  FolderArchive,
   Layers,
   Lock,
   MoreHorizontal,
@@ -68,6 +70,7 @@ import {
 import { ExportPanel } from '../components/export-panel/ExportPanel';
 import { SettingsPanel } from '../components/settings/SettingsPanel';
 import { DesignSystemShowcase } from '../components/showcase/DesignSystemShowcase';
+import { ExcelInstallModal } from '../components/modals/ExcelInstallModal';
 
 type ActiveTab =
   | 'upload'
@@ -177,6 +180,7 @@ async function loadDefaultEcologyProfiles(): Promise<{ signers: SignerConfig[]; 
 export const App: React.FC = () => {
   const [language, setLanguage] = useState<AppLanguage>('ru');
   const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
+  const [excelModalOpen, setExcelModalOpen] = useState(false);
 
   const [files, setFiles] = useState<UploadedPdfFile[]>([]);
   const [signers, setSigners] = useState<SignerConfig[]>([]);
@@ -751,6 +755,17 @@ export const App: React.FC = () => {
               </div>
 
               <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setExcelModalOpen(true)}
+                  className="hidden sm:inline-flex h-8 items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" strokeWidth={2} />
+                  {language === 'ru' ? '⚡ Кнопка в Excel' : '⚡ Excel батырмасы'}
+                </Button>
+
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
@@ -812,13 +827,19 @@ export const App: React.FC = () => {
                     />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setActiveTab('settings')}>
-                      <Settings className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                      {t.nav.settings}
+                    <DropdownMenuItem onSelect={() => setExcelModalOpen(true)}>
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" strokeWidth={1.75} aria-hidden="true" />
+                      {language === 'ru' ? '⚡ Установить кнопку в Excel' : '⚡ Excel-ге батырма орнату'}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setActiveTab('design-system')}>
-                      <Layers className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                      {t.nav.designSystem}
+                    <DropdownMenuItem asChild>
+                      <a
+                        href="/download/Excel_Addin_Installer.zip"
+                        download="Excel_Addin_Installer.zip"
+                        className="flex w-full items-center gap-2 text-xs font-medium text-emerald-600"
+                      >
+                        <FolderArchive className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                        {language === 'ru' ? 'Установщик Excel (.zip, 300 КБ)' : 'Excel орнатқышы (.zip)'}
+                      </a>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <a
@@ -827,8 +848,16 @@ export const App: React.FC = () => {
                         className="flex w-full items-center gap-2 text-xs font-medium text-[var(--color-primary)]"
                       >
                         <Download className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                        Excel қосымшасы (.exe)
+                        {language === 'ru' ? 'Программа для Windows (.exe)' : 'Windows бағдарламасы (.exe)'}
                       </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setActiveTab('settings')}>
+                      <Settings className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                      {t.nav.settings}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setActiveTab('design-system')}>
+                      <Layers className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                      {t.nav.designSystem}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1047,6 +1076,12 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+      <ExcelInstallModal
+        open={excelModalOpen}
+        onOpenChange={setExcelModalOpen}
+        t={t}
+        language={language}
+      />
     </div>
     </TooltipProvider>
     </ToastProvider>
