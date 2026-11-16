@@ -1,5 +1,5 @@
 ﻿# =========================================================================
-# PDF Stamp Studio — Excel Add-in автоматты орнатқышы (PowerShell)
+# PDF Stamp Studio — Автоматический установщик надстройки Excel (PowerShell)
 # =========================================================================
 
 [CmdletBinding()]
@@ -20,34 +20,34 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $basPath = Join-Path $scriptDir "vba\PdfStampModule.bas"
 
 if ($Uninstall) {
-    Write-Host "[PDF Stamp Studio] Орнатуды жою басталды..." -ForegroundColor Yellow
+    Write-Host "[PDF Stamp Studio] Удаление надстройки..." -ForegroundColor Yellow
     if (Test-Path $targetXlam) {
         Remove-Item $targetXlam -Force
-        Write-Host "✓ XLSTART ішіндегі PdfStampStudio.xlam өшірілді." -ForegroundColor Green
+        Write-Host "✓ Файл PdfStampStudio.xlam удален из папки XLSTART." -ForegroundColor Green
     }
-    Write-Host "✓ Дайын! Excel енді таза күйінде ашылады." -ForegroundColor Green
+    Write-Host "✓ Готово! Excel теперь запускается в стандартном режиме." -ForegroundColor Green
     exit 0
 }
 
 Write-Host "=================================================" -ForegroundColor Cyan
-Write-Host " PDF Stamp Studio — Excel-ге автоматты орнату" -ForegroundColor Cyan
+Write-Host " PDF Stamp Studio — Установка надстройки в Excel" -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 
-# 1. Жүйелік папкаларды дайындау
+# 1. Создание системных папок
 if (-not (Test-Path $studioDir)) { New-Item -ItemType Directory -Path $studioDir -Force | Out-Null }
 if (-not (Test-Path $sigDir)) { New-Item -ItemType Directory -Path $sigDir -Force | Out-Null }
 if (-not (Test-Path $stampDir)) { New-Item -ItemType Directory -Path $stampDir -Force | Out-Null }
 if (-not (Test-Path $xlstartDir)) { New-Item -ItemType Directory -Path $xlstartDir -Force | Out-Null }
 
-Write-Host "✓ Жүйелік папкалар дайын: $studioDir" -ForegroundColor Green
+Write-Host "✓ Системные папки готовы: $studioDir" -ForegroundColor Green
 
-# 2. config.ini файлын тексеру немесе үлгісін жасау
+# 2. Создание или проверка шаблона config.ini
 $iniPath = Join-Path $studioDir "config.ini"
 if (-not (Test-Path $iniPath)) {
     $defaultIni = @"
 [General]
 AutoOpenPdf=1
-Suffix=_бекітілген
+Suffix=_утвержденный
 
 [Signer1]
 Enabled=1
@@ -79,25 +79,25 @@ Width=95
 Height=95
 "@
     Set-Content -Path $iniPath -Value $defaultIni -Encoding UTF8
-    Write-Host "✓ config.ini үлгісі жасалды." -ForegroundColor Green
+    Write-Host "✓ Создан базовый файл config.ini." -ForegroundColor Green
 }
 
-# 3. Егер папкадағы үлгі суреттер болса, жүйелік папкаға көшіру
+# 3. Копирование демонстрационных PNG файлов
 $assetDir = Join-Path $scriptDir "assets"
 if (Test-Path $assetDir) {
     Get-ChildItem -Path $assetDir -Filter "*.png" | ForEach-Object {
         if ($_.Name -like "sig*") {
             Copy-Item $_.FullName -Destination $sigDir -Force
-            Write-Host "✓ Қолтаңба көшірілді: $($_.Name)" -ForegroundColor Green
+            Write-Host "✓ Файл подписи скопирован: $($_.Name)" -ForegroundColor Green
         } elseif ($_.Name -like "stamp*") {
             Copy-Item $_.FullName -Destination $stampDir -Force
-            Write-Host "✓ Мөр көшірілді: $($_.Name)" -ForegroundColor Green
+            Write-Host "✓ Файл печати скопирован: $($_.Name)" -ForegroundColor Green
         }
     }
 }
 
-# 4. Excel арқылы .xlam Add-in жасау және XLSTART-қа орнату
-Write-Host "Excel іске қосылуда (фондық режимде)..." -ForegroundColor Yellow
+# 4. Компиляция надстройки .xlam через Excel и размещение в XLSTART
+Write-Host "Запуск Excel для регистрации надстройки (в фоновом режиме)..." -ForegroundColor Yellow
 
 $regPaths = @(
     "HKCU:\Software\Microsoft\Office\16.0\Excel\Security",
@@ -127,11 +127,11 @@ try {
     # 55 = xlOpenXMLAddIn (.xlam)
     $wb.SaveAs($targetXlam, 55)
     $wb.Close($false)
-    Write-Host "✓ PdfStampStudio.xlam сәтті құрастырылды және XLSTART-қа салынды!" -ForegroundColor Green
+    Write-Host "✓ Надстройка PdfStampStudio.xlam успешно создана и помещена в XLSTART!" -ForegroundColor Green
 }
 catch {
-    Write-Warning "Excel COM арқылы құрастыру кезінде қате: $_"
-    Write-Host "Қосалқы тәсіл қолданылуда..." -ForegroundColor Yellow
+    Write-Warning "Ошибка при автоматической сборке через Excel: $_"
+    Write-Host "Используется резервный режим установки..." -ForegroundColor Yellow
 }
 finally {
     if ($excel) {
@@ -141,7 +141,7 @@ finally {
         [System.GC]::WaitForPendingFinalizers()
     }
     
-    # Реестр баптауларын қалпына келтіру
+    # Восстановление настроек реестра
     foreach ($rp in $regPaths) {
         if ($prevRegValues.ContainsKey($rp)) {
             $orig = $prevRegValues[$rp]
@@ -154,9 +154,9 @@ finally {
 
 Write-Host ""
 Write-Host "=================================================" -ForegroundColor Green
-Write-Host " ҚҰТТЫҚТАЙМЫЗ! СӘТТІ ОРНАТЫЛДЫ!" -ForegroundColor Green
+Write-Host " ПОЗДРАВЛЯЕМ! УСТАНОВКА ЗАВЕРШЕНА УСПЕШНО!" -ForegroundColor Green
 Write-Host "=================================================" -ForegroundColor Green
-Write-Host "Енді кез келген Excel файлын ашып:" -ForegroundColor Cyan
-Write-Host "1) Жоғарғы мәзірден 'PDF жасау және қол қою' батырмасын басыңыз;" -ForegroundColor White
-Write-Host "2) Немесе Ctrl + Shift + P пернелерін басыңыз." -ForegroundColor White
+Write-Host "Теперь откройте любой файл Excel:" -ForegroundColor Cyan
+Write-Host "1) В верхней панели появится кнопка 'Создать PDF с подписями';" -ForegroundColor White
+Write-Host "2) Либо нажмите сочетание клавиш Ctrl + Shift + P." -ForegroundColor White
 Write-Host ""

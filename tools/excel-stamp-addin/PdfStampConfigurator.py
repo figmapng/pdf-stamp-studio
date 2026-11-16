@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-PDF Stamp Studio — Windows Desktop Configurator
-Excel үшін қол қоюшылар мен мөрді бір рет баптау және Excel-ге автоматты орнату бағдарламасы.
+PDF Stamp Studio — Программа настройки для Windows
+Настройка подписывающих лиц и печати организации с автоматической установкой в Excel.
 """
 
 import os
@@ -31,7 +31,7 @@ def get_config_path() -> str:
 class ConfiguratorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("PDF Stamp Studio — Excel баптау бағдарламасы")
+        self.title("PDF Stamp Studio — Настройка надстройки для Excel")
         self.geometry("720x780")
         self.minsize(640, 680)
 
@@ -56,8 +56,8 @@ class ConfiguratorApp(tk.Tk):
 
         title_lbl = tk.Label(
             header,
-            text="📑 PDF Stamp Studio — Баптау және Орнату",
-            font=("Segoe UI", 14, "bold"),
+            text="📑 PDF Stamp Studio — Настройка и Установка в Excel",
+            font=("Segoe UI", 13, "bold"),
             fg="#ffffff",
             bg="#1e1e2d"
         )
@@ -65,7 +65,7 @@ class ConfiguratorApp(tk.Tk):
 
         subtitle_lbl = tk.Label(
             header,
-            text="Excel үшін 1 кликпен қол қойып, PDF жасайтын баптаушы",
+            text="Создание утвержденных PDF протоколов в 1 клик",
             font=("Segoe UI", 9),
             fg="#a1a1b5",
             bg="#1e1e2d"
@@ -105,7 +105,7 @@ class ConfiguratorApp(tk.Tk):
 
         self.btn_install = tk.Button(
             actions_frame,
-            text="🚀 Баптауларды сақтау және Excel-ге орнату",
+            text="🚀 Сохранить и установить в Excel",
             font=("Segoe UI", 11, "bold"),
             bg="#10b981",
             fg="#ffffff",
@@ -121,7 +121,7 @@ class ConfiguratorApp(tk.Tk):
 
         self.btn_save = tk.Button(
             actions_frame,
-            text="💾 Тек сақтау",
+            text="💾 Только сохранить",
             font=("Segoe UI", 10),
             bg="#e2e8f0",
             fg="#1e293b",
@@ -136,7 +136,7 @@ class ConfiguratorApp(tk.Tk):
 
         self.btn_uninstall = tk.Button(
             actions_frame,
-            text="🗑️ Excel-ден өшіру",
+            text="🗑️ Удалить из Excel",
             font=("Segoe UI", 9),
             bg="#fee2e2",
             fg="#b91c1c",
@@ -150,140 +150,140 @@ class ConfiguratorApp(tk.Tk):
         self.btn_uninstall.pack(side="right")
 
     def _build_signer1_section(self):
-        group = ttk.LabelFrame(self.scrollable_frame, text=" ✍️ 1-қол қоюшы (Мысалы: Инженер-химик) ", padding=10)
+        group = ttk.LabelFrame(self.scrollable_frame, text=" ✍️ 1-й подписывающий (Инженер-химик) ", padding=10)
         group.pack(fill="x", pady=6)
 
         self.sig1_enabled = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="Белсенді (қосу)", variable=self.sig1_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(group, text="Включено", variable=self.sig1_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
 
-        ttk.Label(group, text="Аты-жөні:").grid(row=1, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="ФИО сотрудника:").grid(row=1, column=0, sticky="w", pady=3)
         self.sig1_name = ttk.Entry(group, width=35)
         self.sig1_name.grid(row=1, column=1, sticky="ew", pady=3)
 
-        ttk.Label(group, text="Іздейтін сөздер (үтірмен):").grid(row=2, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="Ключевые слова (через запятую):").grid(row=2, column=0, sticky="w", pady=3)
         self.sig1_keywords = ttk.Entry(group, width=35)
         self.sig1_keywords.grid(row=2, column=1, sticky="ew", pady=3)
 
-        ttk.Label(group, text="Қолтаңба суреті (.png):").grid(row=3, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="Файл подписи (.png):").grid(row=3, column=0, sticky="w", pady=3)
         file_frame = ttk.Frame(group)
         file_frame.grid(row=3, column=1, sticky="ew", pady=3)
         self.sig1_path = ttk.Entry(file_frame)
         self.sig1_path.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        ttk.Button(file_frame, text="Шолу...", command=lambda: self._browse_file(self.sig1_path)).pack(side="right")
+        ttk.Button(file_frame, text="Обзор...", command=lambda: self._browse_file(self.sig1_path)).pack(side="right")
 
         # Coordinates
         coord_frame = ttk.Frame(group)
         coord_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=5)
-        ttk.Label(coord_frame, text="Ығысу X:").pack(side="left")
+        ttk.Label(coord_frame, text="Смещение X:").pack(side="left")
         self.sig1_offx = ttk.Spinbox(coord_frame, from_=-200, to=400, width=5)
         self.sig1_offx.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Ығысу Y:").pack(side="left")
+        ttk.Label(coord_frame, text="Смещение Y:").pack(side="left")
         self.sig1_offy = ttk.Spinbox(coord_frame, from_=-200, to=400, width=5)
         self.sig1_offy.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Ені:").pack(side="left")
+        ttk.Label(coord_frame, text="Ширина:").pack(side="left")
         self.sig1_w = ttk.Spinbox(coord_frame, from_=20, to=300, width=5)
         self.sig1_w.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Биіктігі:").pack(side="left")
+        ttk.Label(coord_frame, text="Высота:").pack(side="left")
         self.sig1_h = ttk.Spinbox(coord_frame, from_=10, to=200, width=5)
         self.sig1_h.pack(side="left", padx=3)
 
         group.columnconfigure(1, weight=1)
 
     def _build_signer2_section(self):
-        group = ttk.LabelFrame(self.scrollable_frame, text=" ✍️ 2-қол қоюшы (Мысалы: Зертхана меңгерушісі) ", padding=10)
+        group = ttk.LabelFrame(self.scrollable_frame, text=" ✍️ 2-й подписывающий (Заведующий лабораторией) ", padding=10)
         group.pack(fill="x", pady=6)
 
         self.sig2_enabled = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="Белсенді (қосу)", variable=self.sig2_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(group, text="Включено", variable=self.sig2_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
 
-        ttk.Label(group, text="Аты-жөні:").grid(row=1, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="ФИО сотрудника:").grid(row=1, column=0, sticky="w", pady=3)
         self.sig2_name = ttk.Entry(group, width=35)
         self.sig2_name.grid(row=1, column=1, sticky="ew", pady=3)
 
-        ttk.Label(group, text="Іздейтін сөздер (үтірмен):").grid(row=2, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="Ключевые слова (через запятую):").grid(row=2, column=0, sticky="w", pady=3)
         self.sig2_keywords = ttk.Entry(group, width=35)
         self.sig2_keywords.grid(row=2, column=1, sticky="ew", pady=3)
 
-        ttk.Label(group, text="Қолтаңба суреті (.png):").grid(row=3, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="Файл подписи (.png):").grid(row=3, column=0, sticky="w", pady=3)
         file_frame = ttk.Frame(group)
         file_frame.grid(row=3, column=1, sticky="ew", pady=3)
         self.sig2_path = ttk.Entry(file_frame)
         self.sig2_path.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        ttk.Button(file_frame, text="Шолу...", command=lambda: self._browse_file(self.sig2_path)).pack(side="right")
+        ttk.Button(file_frame, text="Обзор...", command=lambda: self._browse_file(self.sig2_path)).pack(side="right")
 
         # Coordinates
         coord_frame = ttk.Frame(group)
         coord_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=5)
-        ttk.Label(coord_frame, text="Ығысу X:").pack(side="left")
+        ttk.Label(coord_frame, text="Смещение X:").pack(side="left")
         self.sig2_offx = ttk.Spinbox(coord_frame, from_=-200, to=400, width=5)
         self.sig2_offx.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Ығысу Y:").pack(side="left")
+        ttk.Label(coord_frame, text="Смещение Y:").pack(side="left")
         self.sig2_offy = ttk.Spinbox(coord_frame, from_=-200, to=400, width=5)
         self.sig2_offy.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Ені:").pack(side="left")
+        ttk.Label(coord_frame, text="Ширина:").pack(side="left")
         self.sig2_w = ttk.Spinbox(coord_frame, from_=20, to=300, width=5)
         self.sig2_w.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Биіктігі:").pack(side="left")
+        ttk.Label(coord_frame, text="Высота:").pack(side="left")
         self.sig2_h = ttk.Spinbox(coord_frame, from_=10, to=200, width=5)
         self.sig2_h.pack(side="left", padx=3)
 
         group.columnconfigure(1, weight=1)
 
     def _build_stamp_section(self):
-        group = ttk.LabelFrame(self.scrollable_frame, text=" 🔵 Мекеме мөрі (Печать) ", padding=10)
+        group = ttk.LabelFrame(self.scrollable_frame, text=" 🔵 Печать организации (ТОО Ecology Expert) ", padding=10)
         group.pack(fill="x", pady=6)
 
         self.stamp_enabled = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="Белсенді (қосу)", variable=self.stamp_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(group, text="Включено", variable=self.stamp_enabled).grid(row=0, column=0, columnspan=2, sticky="w", pady=2)
 
-        ttk.Label(group, text="Байланыстыратын адам/сөз:").grid(row=1, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="Привязка к слову / ФИО:").grid(row=1, column=0, sticky="w", pady=3)
         self.stamp_anchor = ttk.Entry(group, width=35)
         self.stamp_anchor.grid(row=1, column=1, sticky="ew", pady=3)
 
-        ttk.Label(group, text="Мөр суреті (.png):").grid(row=2, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="Файл печати (.png):").grid(row=2, column=0, sticky="w", pady=3)
         file_frame = ttk.Frame(group)
         file_frame.grid(row=2, column=1, sticky="ew", pady=3)
         self.stamp_path = ttk.Entry(file_frame)
         self.stamp_path.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        ttk.Button(file_frame, text="Шолу...", command=lambda: self._browse_file(self.stamp_path)).pack(side="right")
+        ttk.Button(file_frame, text="Обзор...", command=lambda: self._browse_file(self.stamp_path)).pack(side="right")
 
         # Coordinates
         coord_frame = ttk.Frame(group)
         coord_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=5)
-        ttk.Label(coord_frame, text="Ығысу X:").pack(side="left")
+        ttk.Label(coord_frame, text="Смещение X:").pack(side="left")
         self.stamp_offx = ttk.Spinbox(coord_frame, from_=-200, to=400, width=5)
         self.stamp_offx.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Ығысу Y:").pack(side="left")
+        ttk.Label(coord_frame, text="Смещение Y:").pack(side="left")
         self.stamp_offy = ttk.Spinbox(coord_frame, from_=-200, to=400, width=5)
         self.stamp_offy.pack(side="left", padx=(3, 15))
 
-        ttk.Label(coord_frame, text="Өлшемі:").pack(side="left")
+        ttk.Label(coord_frame, text="Размер:").pack(side="left")
         self.stamp_size = ttk.Spinbox(coord_frame, from_=30, to=300, width=5)
         self.stamp_size.pack(side="left", padx=(3, 15))
 
         group.columnconfigure(1, weight=1)
 
     def _build_general_section(self):
-        group = ttk.LabelFrame(self.scrollable_frame, text=" ⚙️ Қосымша параметрлер ", padding=10)
+        group = ttk.LabelFrame(self.scrollable_frame, text=" ⚙️ Дополнительные параметры ", padding=10)
         group.pack(fill="x", pady=6)
 
-        ttk.Label(group, text="PDF атына жалғанатын сөз:").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Label(group, text="Суффикс имени файла PDF:").grid(row=0, column=0, sticky="w", pady=3)
         self.gen_suffix = ttk.Entry(group, width=25)
         self.gen_suffix.grid(row=0, column=1, sticky="w", pady=3)
 
         self.gen_autoopen = tk.BooleanVar(value=True)
-        ttk.Checkbutton(group, text="Экспортталған PDF-ті бірден автоматты ашу", variable=self.gen_autoopen).grid(row=1, column=0, columnspan=2, sticky="w", pady=3)
+        ttk.Checkbutton(group, text="Автоматически открывать PDF после создания", variable=self.gen_autoopen).grid(row=1, column=0, columnspan=2, sticky="w", pady=3)
 
     def _browse_file(self, entry_widget):
         file_path = filedialog.askopenfilename(
-            title="PNG суретін таңдаңыз",
+            title="Выберите изображение PNG",
             filetypes=[("PNG images", "*.png"), ("All files", "*.*")]
         )
         if file_path:
@@ -330,7 +330,7 @@ class ConfiguratorApp(tk.Tk):
         self.stamp_size.set(config.get("Stamp", "Width", fallback="95"))
 
         self.gen_suffix.delete(0, tk.END)
-        self.gen_suffix.insert(0, config.get("General", "Suffix", fallback="_бекітілген"))
+        self.gen_suffix.insert(0, config.get("General", "Suffix", fallback="_утвержденный"))
         self.gen_autoopen.set(config.getboolean("General", "AutoOpenPdf", fallback=True))
 
     def _copy_asset(self, source_path: str, target_subfolder: str, default_name: str) -> str:
@@ -357,7 +357,7 @@ class ConfiguratorApp(tk.Tk):
         config = configparser.ConfigParser()
         config["General"] = {
             "AutoOpenPdf": "1" if self.gen_autoopen.get() else "0",
-            "Suffix": self.gen_suffix.get().strip() or "_бекітілген"
+            "Suffix": self.gen_suffix.get().strip() or "_утвержденный"
         }
         config["Signer1"] = {
             "Enabled": "1" if self.sig1_enabled.get() else "0",
@@ -395,8 +395,8 @@ class ConfiguratorApp(tk.Tk):
 
         if not silent:
             messagebox.showinfo(
-                "Сақталды",
-                f"Баптаулар сәтті сақталды!\n\nЖол: {self.config_path}"
+                "Сохранено",
+                f"Параметры успешно сохранены!\n\nПуть: {self.config_path}"
             )
 
     def save_and_install(self):
@@ -404,7 +404,7 @@ class ConfiguratorApp(tk.Tk):
 
         ps1_script = os.path.join(self.base_dir, "install.ps1")
         if not os.path.exists(ps1_script):
-            messagebox.showerror("Қате", f"install.ps1 файлы табылмады:\n{ps1_script}")
+            messagebox.showerror("Ошибка", f"Файл install.ps1 не найден:\n{ps1_script}")
             return
 
         cmd = [
@@ -417,20 +417,20 @@ class ConfiguratorApp(tk.Tk):
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, check=True)
             messagebox.showinfo(
-                "Сәтті орнатылды!",
-                "ҚҰТТЫҚТАЙМЫЗ!\n\n"
-                "Excel Add-in сәтті орнатылды!\n\n"
-                "Енді Excel-ді ашып, жоғарғы мәзірден 'PDF жасау және қол қою' батырмасын "
-                "немесе Ctrl + Shift + P пернелерін басыңыз."
+                "Успешно установлено!",
+                "ПОЗДРАВЛЯЕМ!\n\n"
+                "Надстройка Excel успешно установлена!\n\n"
+                "Теперь откройте любой файл Excel и нажмите кнопку 'Создать PDF с подписями' "
+                "в верхней панели либо нажмите сочетание клавиш Ctrl + Shift + P."
             )
         except Exception as e:
             messagebox.showerror(
-                "Орнату кезінде қате шықты",
-                f"PowerShell скриптін іске қосу кезінде қате:\n{e}"
+                "Ошибка при установке",
+                f"Ошибка запуска скрипта PowerShell:\n{e}"
             )
 
     def uninstall_addin(self):
-        if not messagebox.askyesno("Растау", "Excel Add-in бағдарламасын шынымен өшіргіңіз келе ме?"):
+        if not messagebox.askyesno("Подтверждение", "Вы действительно хотите удалить надстройку из Excel?"):
             return
 
         ps1_script = os.path.join(self.base_dir, "install.ps1")
@@ -443,9 +443,9 @@ class ConfiguratorApp(tk.Tk):
         ]
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            messagebox.showinfo("Өшірілді", "Excel Add-in сәтті өшірілді.")
+            messagebox.showinfo("Удалено", "Надстройка Excel успешно удалена.")
         except Exception as e:
-            messagebox.showerror("Қате", f"Өшіру кезінде қате:\n{e}")
+            messagebox.showerror("Ошибка", f"Ошибка при удалении надстройки:\n{e}")
 
 if __name__ == "__main__":
     app = ConfiguratorApp()

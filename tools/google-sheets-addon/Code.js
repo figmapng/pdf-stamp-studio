@@ -1,84 +1,89 @@
 /**
  * =========================================================================
- * PDF Stamp Studio — Google Sheets Apps Script (Қатесіз 2 қадамдық нұсқа)
- * ТОО «Ecology Expert» зертханалық хаттамалары үшін
+ * PDF Stamp Studio — Google Sheets Apps Script (Версия на русском языке)
+ * Для протоколов аналитической лаборатории ТОО «Ecology Expert»
+ * 
+ * ШАГ 1: ✍️ Поставить подписи и печать (Проверка и перемещение мышкой)
+ * ШАГ 2: 🚀 Сохранить в PDF (Автоматическое запоминание позиций и экспорт PDF)
  * =========================================================================
  */
 
 const CONFIG = {
-  suffix: '_бекітілген',
+  suffix: '_утвержденный',
 
-  // 1-қол қоюшы: Инженер-химик Затыбек А. А.
+  // 1-й подписывающий: Инженер-химик Затыбек А. А.
   signer1: {
     name: 'Затыбек А. А. (Инженер-химик)',
     enabled: true,
     keywords: ['Затыбек', 'Инженер-химик'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_zatybek.png',
-    rowOffset: -1,   // Мәтіннен 1 қатар жоғары
-    offsetX: 130,    // Сызықтың тура ортасы
-    offsetY: 6,      // Оң мән (сызықтың дәл үстіне)
+    rowOffset: -1,   // На 1 строку выше (для точной посадки на черту)
+    offsetX: 130,    // По горизонтали (центр линии)
+    offsetY: 6,      // Положительное смещение (на линию)
     width: 105,
     height: 55
   },
 
-  // 2-қол қоюшы: Зертхана меңгерушісі Сатыбалдина З. С.
+  // 2-й подписывающий: Заведующий лабораторией Сатыбалдина З. С.
   signer2: {
     name: 'Сатыбалдина З. С. (Заведующий лабораторией)',
     enabled: true,
     keywords: ['Сатыбалдина', 'Заведующий лабораторией'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_satybaldina.png',
-    rowOffset: -1,   // Мәтіннен 1 қатар жоғары
-    offsetX: 160,    // Сызықтың тура ортасы
-    offsetY: 12,     // Сызықтың үстінде
+    rowOffset: -1,   // На 1 строку выше
+    offsetX: 160,    // По горизонтали
+    offsetY: 12,     // На линию
     width: 110,
     height: 38
   },
 
-  // Мекеме мөрі: ТОО «Ecology Expert» Аналитикалық зертхана хаттамалары үшін
+  // Печать организации: ТОО «Ecology Expert» Для протоколов аналитической лаборатории
   stamp: {
-    name: 'ТОО Ecology Expert мөрі',
+    name: 'Печать ТОО Ecology Expert',
     enabled: true,
     anchorKeyword: 'Сатыбалдина',
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/stamp.png',
-    rowOffset: -2,   // 2 қатар жоғары
-    offsetX: 160,    // Қолтаңбаны басып тұратындай оңға
-    offsetY: 8,      // Мөрдің ортасы сызықты дәл кесіп өтеді
+    rowOffset: -2,   // На 2 строки выше (центр печати делит линию пополам)
+    offsetX: 160,    // Смещена вправо с наложением на подпись
+    offsetY: 8,      // По вертикали
     width: 95,
     height: 95
   }
 };
 
 /**
- * Қарапайым 2 қадамдық мәзір
+ * Простое меню из 2 основных шагов
  */
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📑 PDF Stamp')
-    .addItem('1-қадам: ✍️ Қол мен мөрді қою', 'step1PlaceSignaturesAndStamp')
-    .addItem('2-қадам: 🚀 PDF сақтау', 'step2ExportPdf')
+    .addItem('Шаг 1: ✍️ Поставить подписи и печать', 'step1PlaceSignaturesAndStamp')
+    .addItem('Шаг 2: 🚀 Сохранить в PDF', 'step2ExportPdf')
     .addSeparator()
-    .addItem('🗑️ Кестені тазалау (өшіру)', 'clearPlacedSignaturesAndStampsAlert')
-    .addItem('🔄 Бастапқы орынға қайтару (Сброс)', 'resetToDefaultCoordsAlert')
+    .addItem('🗑️ Очистить таблицу (удалить)', 'clearPlacedSignaturesAndStampsAlert')
+    .addItem('🔄 Сбросить позиции (по умолчанию)', 'resetToDefaultCoordsAlert')
     .addToUi();
 }
 
 /**
- * 1-ҚАДАМ: Қол мен мөрді кестеге қою
+ * ШАГ 1: Поставить подписи и печать на лист
+ * Экран автоматически прокручивается к месту подписи.
+ * Пользователь может мышкой подвинуть подписи или печать в любое удобное место.
  */
 function step1PlaceSignaturesAndStamp() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
 
   try {
-    ss.toast('Қолтаңбалар мен мөр қойылуда...', 'PDF Stamp', 2);
+    ss.toast('Размещение подписей и печати...', 'PDF Stamp', 2);
     const count = placeImagesOnSheet(ss);
 
     if (count === 0) {
-      ui.alert('⚠️ Қате', 'Кестеден «Затыбек» немесе «Сатыбалдина» сөздері табылмады!\nБелсенді парақты ашып, қайта басыңыз.', ui.ButtonSet.OK);
+      ui.alert('⚠️ Ошибка', 'В таблице не найдены слова «Затыбек» или «Сатыбалдина»!\nОткройте нужный лист с таблицей и повторите.', ui.ButtonSet.OK);
       return;
     }
 
-    // Экранды қолтаңбалар тұрған қатарға автоматты түрде апару
+    // Автоматический переход к строке с подписями
     const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
     if (cell1) {
       try {
@@ -88,16 +93,16 @@ function step1PlaceSignaturesAndStamp() {
     }
 
     SpreadsheetApp.flush();
-    ss.toast('✅ Қойылды! Қажет болса мышкамен жылжытыңыз да, 2-қадамды басыңыз.', 'PDF Stamp', 6);
+    ss.toast('✅ Установлено! При необходимости подвиньте мышкой и нажмите Шаг 2.', 'PDF Stamp', 6);
 
   } catch (e) {
-    ui.alert('Қате: ' + e.message);
+    ui.alert('Ошибка: ' + e.message);
   }
 }
 
 /**
- * 2-ҚАДАМ: PDF сақтау
- * Егер мышкамен жылжытылса, жаңа орынды автоматты есте сақтап алады
+ * ШАГ 2: Сохранить в PDF
+ * Если подписи/печать были перемещены мышкой, их новые координаты автоматически запоминаются.
  */
 function step2ExportPdf() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -106,13 +111,14 @@ function step2ExportPdf() {
   try {
     const existingCount = countPlacedImages(ss);
 
+    // Если Шаг 1 не нажимали, скрипт сначала расставит подписи сам
     if (existingCount === 0) {
-      ss.toast('Қолдар мен мөр қойылуда...', 'PDF Stamp', 2);
+      ss.toast('Размещение подписей и печати...', 'PDF Stamp', 2);
       placeImagesOnSheet(ss);
       SpreadsheetApp.flush();
       Utilities.sleep(1200);
     } else {
-      // Жаңа орындарды автоматты сақтау
+      // Автоматическое сохранение новых координат, если пользователь двигал мышкой:
       try {
         autoSaveCurrentPositions(ss);
       } catch (err) {}
@@ -120,27 +126,28 @@ function step2ExportPdf() {
       Utilities.sleep(800);
     }
 
-    ss.toast('PDF құжаты жиналуда...', 'PDF Stamp', 4);
+    ss.toast('Формирование PDF документа...', 'PDF Stamp', 4);
     const pdfBlob = fetchSpreadsheetPdfBlob(ss);
     const fileName = ss.getName() + CONFIG.suffix + '.pdf';
     pdfBlob.setName(fileName);
     const pdfFile = DriveApp.createFile(pdfBlob);
 
+    // Диалог скачивания готового документа
     showDownloadDialog(ui, pdfFile.getUrl(), pdfFile.getDownloadUrl(), fileName);
 
   } catch (error) {
-    ui.alert('Қате туындады: ' + error.message);
+    ui.alert('Произошла ошибка: ' + error.message);
   }
 }
 
 /**
- * Суреттерді кестеге қою
+ * Размещение изображений на листе
  */
 function placeImagesOnSheet(ss) {
   clearPlacedSignaturesAndStamps();
   let placedCount = 0;
 
-  // 1. Затыбек А. А.
+  // 1. Инженер-химик Затыбек А. А.
   if (CONFIG.signer1.enabled) {
     const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
     if (cell1) {
@@ -149,7 +156,7 @@ function placeImagesOnSheet(ss) {
     }
   }
 
-  // 2. Сатыбалдина З. С.
+  // 2. Заведующий лабораторией Сатыбалдина З. С.
   if (CONFIG.signer2.enabled) {
     const cell2 = findCellByKeywords(ss, CONFIG.signer2.keywords);
     if (cell2) {
@@ -158,7 +165,7 @@ function placeImagesOnSheet(ss) {
     }
   }
 
-  // 3. Зертхана мөрі
+  // 3. Печать организации
   if (CONFIG.stamp.enabled) {
     const cellStamp = findCellByKeywords(ss, [CONFIG.stamp.anchorKeyword]);
     if (cellStamp) {
@@ -171,13 +178,13 @@ function placeImagesOnSheet(ss) {
 }
 
 /**
- * Суретті жүктеп ұяшық үстіне қауіпсіз қою
+ * Вставка отдельного изображения над ячейкой с учетом сохраненных координат
  */
 function insertImageOverCell(cell, itemKey, defaultCfg) {
   const sheet = cell.getSheet();
   const resp = UrlFetchApp.fetch(defaultCfg.imageUrl, { muteHttpExceptions: true });
   if (resp.getResponseCode() !== 200) {
-    throw new Error(defaultCfg.name + ' суреті жүктелмеді');
+    throw new Error('Изображение ' + defaultCfg.name + ' не загрузилось');
   }
 
   let targetRow = Math.max(1, cell.getRow() + defaultCfg.rowOffset);
@@ -187,7 +194,7 @@ function insertImageOverCell(cell, itemKey, defaultCfg) {
   let width = defaultCfg.width;
   let height = defaultCfg.height;
 
-  // Егер пайдаланушы бұрын мышкамен қойған жаңа орны сақталған болса:
+  // Если пользователь ранее двигал элемент мышкой, используем его координаты:
   try {
     const savedProps = PropertiesService.getDocumentProperties().getProperty('SAVED_COORDS');
     if (savedProps) {
@@ -213,7 +220,7 @@ function insertImageOverCell(cell, itemKey, defaultCfg) {
 }
 
 /**
- * Мышкамен жылжытылған орындарды есте сақтау
+ * Автоматическое сохранение позиций элементов после ручного перемещения мышкой
  */
 function autoSaveCurrentPositions(ss) {
   const sheets = ss.getSheets();
@@ -253,17 +260,17 @@ function autoSaveCurrentPositions(ss) {
 }
 
 /**
- * Бастапқы орынға қайтару (Сброс)
+ * Сброс координат к значениям по умолчанию
  */
 function resetToDefaultCoordsAlert() {
   PropertiesService.getDocumentProperties().deleteProperty('SAVED_COORDS');
   placeImagesOnSheet(SpreadsheetApp.getActiveSpreadsheet());
   SpreadsheetApp.flush();
-  SpreadsheetApp.getUi().alert('🔄 Қайтарылды', 'Координаталар бастапқы стандартты күйіне қайтарылды.', SpreadsheetApp.getUi().ButtonSet.OK);
+  SpreadsheetApp.getUi().alert('Сброс выполнен', 'Координаты подписей и печати возвращены к исходным значениям по умолчанию.', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 /**
- * Қойылған суреттерді санау
+ * Подсчет установленных изображений
  */
 function countPlacedImages(ss) {
   let count = 0;
@@ -278,11 +285,11 @@ function countPlacedImages(ss) {
 }
 
 /**
- * Кестені тазалау
+ * Очистка таблицы от подписей и печатей
  */
 function clearPlacedSignaturesAndStampsAlert() {
   clearPlacedSignaturesAndStamps();
-  SpreadsheetApp.getUi().alert('Тазартылды', 'Кестеден қолдар мен мөр өшірілді.', SpreadsheetApp.getUi().ButtonSet.OK);
+  SpreadsheetApp.getUi().alert('Очищено', 'Все подписи и печать успешно удалены из таблицы.', SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 function clearPlacedSignaturesAndStamps() {
@@ -301,7 +308,7 @@ function clearPlacedSignaturesAndStamps() {
 }
 
 /**
- * Кестеден сөздер бойынша іздеу
+ * Поиск ячейки по ключевым словам (сначала в активном листе)
  */
 function findCellByKeywords(ss, keywords) {
   const activeSheet = ss.getActiveSheet();
@@ -328,7 +335,7 @@ function findCellByKeywords(ss, keywords) {
 }
 
 /**
- * PDF экспорттау
+ * Экспорт всей книги Google Таблицы в один единый PDF
  */
 function fetchSpreadsheetPdfBlob(ss) {
   const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?' +
@@ -338,13 +345,13 @@ function fetchSpreadsheetPdfBlob(ss) {
     muteHttpExceptions: true
   });
   if (res.getResponseCode() !== 200) {
-    throw new Error('PDF экспорттау мүмкін болмады (HTTP ' + res.getResponseCode() + ')');
+    throw new Error('Не удалось сформировать PDF (HTTP ' + res.getResponseCode() + ')');
   }
   return res.getBlob();
 }
 
 /**
- * Жүктеу терезесі
+ * Модальное окно успешного скачивания PDF
  */
 function showDownloadDialog(ui, viewUrl, downloadUrl, fileName) {
   const html = `
@@ -352,18 +359,18 @@ function showDownloadDialog(ui, viewUrl, downloadUrl, fileName) {
     <html>
       <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 20px; background: #ffffff; color: #0f172a;">
         <div style="font-size: 38px; margin-bottom: 8px;">🎉</div>
-        <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Құжат дайын!</h3>
+        <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Документ готов!</h3>
         <p style="margin: 0 0 20px; font-size: 13px; color: #64748b; line-height: 1.4;">
-          Қолтаңбалар мен мөр нақты орнымен қойылып, PDF әзір болды.<br>
-          <span style="color: #10b981; font-weight: 600;">✨ Сіз қойған жаңа орындар келесі хаттамалар үшін есте сақталды!</span>
+          Подписи и печать установлены, единый PDF файл успешно сформирован.<br>
+          <span style="color: #10b981; font-weight: 600;">✨ Новое расположение сохранено для всех следующих документов!</span>
         </p>
         <a href="${downloadUrl}" target="_blank"
            style="display: block; background: #2563eb; color: #ffffff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; box-shadow: 0 4px 12px rgba(37,99,235,0.25); margin-bottom: 10px;">
-          ⬇️ PDF Жүктеп алу
+          ⬇️ Скачать PDF
         </a>
         <a href="${viewUrl}" target="_blank"
            style="display: block; background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 500;">
-          👁️ Google Drive арқылы қарау
+          👁️ Открыть в Google Диске
         </a>
       </body>
     </html>

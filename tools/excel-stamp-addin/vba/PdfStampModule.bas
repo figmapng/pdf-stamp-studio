@@ -2,18 +2,18 @@ Attribute VB_Name = "PdfStampModule"
 Option Explicit
 
 ' =========================================================================
-' PDF Stamp Studio — Excel Add-in Engine
-' Барлық құжатты бір PDF қылып экспорттау, қолтаңбалар мен мөрді автоматты қою
+' PDF Stamp Studio — Движок надстройки для Microsoft Excel
+' Экспорт всех листов в единый PDF с автоматической простановкой подписей и печати
 ' =========================================================================
 
 Private Const TOOLBAR_NAME As String = "PdfStampStudioToolbar"
 Private Const APP_FOLDER As String = "PdfStampStudio"
 
-' Excel ашылғанда автоматты түрде мәзірді/батырманы қосу
+' Автоматическое добавление меню и горячих клавиш при запуске Excel
 Public Sub Auto_Open()
     On Error Resume Next
     SetupToolbar
-    ' Ыңғайлы пернелер тіркесімі: Ctrl + Shift + P
+    ' Сочетание клавиш: Ctrl + Shift + P
     Application.OnKey "+^P", "RunPdfStampStudio"
     On Error GoTo 0
 End Sub
@@ -25,7 +25,7 @@ Public Sub Auto_Close()
     On Error GoTo 0
 End Sub
 
-' Excel мәзіріне тұрақты батырма қосу
+' Добавление постоянной кнопки в панель Excel
 Public Sub SetupToolbar()
     On Error Resume Next
     RemoveToolbar
@@ -37,11 +37,11 @@ Public Sub SetupToolbar()
     Dim btn As CommandBarButton
     Set btn = cb.Controls.Add(Type:=msoControlButton)
     With btn
-        .Caption = "PDF жасау және қол қою"
+        .Caption = "Создать PDF с подписями"
         .Style = msoButtonIconAndCaption
-        .FaceId = 280 ' PDF / Printer белгішесі
+        .FaceId = 280 ' Иконка PDF / Печать
         .OnAction = "RunPdfStampStudio"
-        .TooltipText = "Хаттаманы бір тұтас PDF қылып экспорттау және қолтаңбалар мен мөрді қою (Ctrl+Shift+P)"
+        .TooltipText = "Экспорт протокола в единый PDF с автоматической установкой подписей и печати (Ctrl+Shift+P)"
     End With
     On Error GoTo 0
 End Sub
@@ -54,13 +54,13 @@ Public Sub RemoveToolbar()
     On Error GoTo 0
 End Sub
 
-' Басты орындалатын процедура
+' Основная процедура обработки протокола
 Public Sub RunPdfStampStudio()
     Dim wb As Workbook
     Set wb = ActiveWorkbook
     
     If wb Is Nothing Then
-        MsgBox "Ашық тұрған Excel файлы табылмады!", vbExclamation, "PDF Stamp Studio"
+        MsgBox "Не найдена открытая книга Excel!", vbExclamation, "PDF Stamp Studio"
         Exit Sub
     End If
     
@@ -70,29 +70,29 @@ Public Sub RunPdfStampStudio()
     iniPath = appDataDir & "config.ini"
     
     If Dir(iniPath) = "" Then
-        MsgBox "Баптау файлы табылмады!" & vbCrLf & vbCrLf & _
-               "Алдымен 'PDF Stamp Studio Баптау' бағдарламасын ашып, қол қоюшылар мен мөрді сақтаңыз." & vbCrLf & _
-               "Жол: " & iniPath, vbCritical, "PDF Stamp Studio — Баптау қажет"
+        MsgBox "Файл настроек не найден!" & vbCrLf & vbCrLf & _
+               "Пожалуйста, сначала запустите 'PDF Stamp Studio — Настройка' и сохраните параметры." & vbCrLf & _
+               "Путь: " & iniPath, vbCritical, "PDF Stamp Studio — Требуется настройка"
         Exit Sub
     End If
     
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
-    ' Уақытша қойылған фигураларды есте сақтау жинағы
+    ' Коллекция временно добавленных фигур для последующей очистки
     Dim addedShapes As Collection
     Set addedShapes = New Collection
     
-    ' 1. Signer 1 баптауларын оқу және қою
+    ' 1. Обработка 1-го подписывающего (Инженер-химик Затыбек А. А.)
     Call ProcessSigner(wb, iniPath, "Signer1", appDataDir, addedShapes)
     
-    ' 2. Signer 2 баптауларын оқу және қою
+    ' 2. Обработка 2-го подписывающего (Заведующий лабораторией Сатыбалдина З. С.)
     Call ProcessSigner(wb, iniPath, "Signer2", appDataDir, addedShapes)
     
-    ' 3. Мөрді оқу және қою
+    ' 3. Обработка печати организации (ТОО Ecology Expert)
     Call ProcessStamp(wb, iniPath, "Stamp", appDataDir, addedShapes)
     
-    ' 4. Шығатын PDF файлының атауын анықтау
+    ' 4. Определение имени и пути для итогового PDF файла
     Dim pdfPath As String
     Dim baseFolder As String
     Dim baseName As String
@@ -110,10 +110,10 @@ Public Sub RunPdfStampStudio()
     End If
     
     Dim suffix As String
-    suffix = ReadIniValue(iniPath, "General", "Suffix", "_қол_қойылған")
+    suffix = ReadIniValue(iniPath, "General", "Suffix", "_утвержденный")
     pdfPath = baseFolder & baseName & suffix & ".pdf"
     
-    ' 5. Бүкіл көрінетін парақтарды бір PDF қылып экспорттау
+    ' 5. Экспорт всех видимых листов книги в единый PDF
     Dim exportSuccess As Boolean
     exportSuccess = False
     
@@ -129,11 +129,11 @@ Public Sub RunPdfStampStudio()
     If Err.Number = 0 Then
         exportSuccess = True
     Else
-        MsgBox "PDF сақтау кезінде қате шықты:" & vbCrLf & Err.Description, vbCritical, "PDF Stamp Studio"
+        MsgBox "Ошибка при сохранении PDF документа:" & vbCrLf & Err.Description, vbCritical, "PDF Stamp Studio"
     End If
     On Error GoTo 0
     
-    ' 6. Excel парағын тазалау (уақытша қойылған қолдар мен мөрлерді өшіру)
+    ' 6. Очистка исходного листа Excel (удаление временных подписей и печатей)
     Dim shp As Shape
     For Each shp In addedShapes
         On Error Resume Next
@@ -145,7 +145,7 @@ Public Sub RunPdfStampStudio()
     Application.DisplayAlerts = True
     
     If exportSuccess Then
-        Application.StatusBar = "PDF сәтті дайындалды: " & pdfPath
+        Application.StatusBar = "PDF документ успешно сформирован: " & pdfPath
     End If
 End Sub
 
@@ -163,7 +163,7 @@ Private Sub ProcessSigner(ByRef wb As Workbook, ByVal iniPath As String, ByVal s
     Dim imgPath As String
     imgPath = appDataDir & "signatures" & Application.PathSeparator & imgName
     If Dir(imgPath) = "" Then
-        ' Fallback: тікелей appDataDir ішінен іздеу
+        ' Поиск напрямую в appDataDir
         imgPath = appDataDir & imgName
         If Dir(imgPath) = "" Then Exit Sub
     End If
@@ -232,7 +232,7 @@ Private Function FindCellByKeywords(ByRef wb As Workbook, ByVal keywordsCsv As S
     Dim ws As Worksheet
     Dim found As Range
     
-    ' Парақтарды соңынан басына қарай қарастырамыз (қол қоюшылар әдетте соңғы бетте болады)
+    ' Просмотр листов с конца (подписи обычно расположены на последнем листе)
     For i = wb.Worksheets.Count To 1 Step -1
         Set ws = wb.Worksheets(i)
         If ws.Visible = xlSheetVisible Then
@@ -253,7 +253,7 @@ Private Function FindCellByKeywords(ByRef wb As Workbook, ByVal keywordsCsv As S
     Set FindCellByKeywords = Nothing
 End Function
 
-' 32-bit және 64-bit Office үшін тәуелсіз таза INI оқу функциясы
+' Универсальная функция чтения INI файла (совместима с 32-bit и 64-bit Office)
 Public Function ReadIniValue(ByVal filePath As String, ByVal section As String, ByVal key As String, Optional ByVal defaultValue As String = "") As String
     ReadIniValue = defaultValue
     If Dir(filePath) = "" Then Exit Function
