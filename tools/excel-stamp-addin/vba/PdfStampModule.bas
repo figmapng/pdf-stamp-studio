@@ -54,6 +54,14 @@ Public Sub RemoveToolbar()
     On Error GoTo 0
 End Sub
 
+' =========================================================================
+' Обработчик клика по кнопке ленты Ribbon (Главная)
+' Для всех версий Excel: 2010, 2013, 2016, 2019, 2021, Office 365
+' =========================================================================
+Public Sub PdfStampRibbonCallback(control As IRibbonControl)
+    RunPdfStampStudio
+End Sub
+
 ' Основная процедура обработки протокола
 Public Sub RunPdfStampStudio()
     Dim wb As Workbook

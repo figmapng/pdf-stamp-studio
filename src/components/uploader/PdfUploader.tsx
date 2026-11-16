@@ -40,6 +40,29 @@ interface PdfUploaderProps {
   t: Translations;
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result as string;
+      const base64 = res.split(',')[1] ?? res;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 export const PdfUploader: React.FC<PdfUploaderProps> = ({
   files,
   onAddFiles,
@@ -90,13 +113,36 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
         continue;
       }
 
-      const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
+      const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
+      let bytes: Uint8Array;
+      let targetName = uniqueName;
+
+      if (isExcel) {
+        const pyApi = (window as unknown as { pywebview?: { api?: { convertExcelToPdf?: (b64: string, name: string) => Promise<string> } } }).pywebview?.api;
+        if (pyApi?.convertExcelToPdf) {
+          try {
+            const b64 = await fileToBase64(file);
+            const convertedB64 = await pyApi.convertExcelToPdf(b64, file.name);
+            bytes = base64ToUint8Array(convertedB64);
+            targetName = uniqueName.replace(/\.xlsx?$/i, '.pdf');
+          } catch (e) {
+            setUploadWarning(`Ошибка конвертации Excel в PDF: ${e instanceof Error ? e.message : String(e)}`);
+            continue;
+          }
+        } else {
+          setUploadWarning(`Файлы Excel (.xlsx) автоматически конвертируются в приложении Windows. Для работы в браузере сохраните файл в Excel через 'Файл ➔ Экспорт в PDF'.`);
+          continue;
+        }
+      } else {
+        const buffer = await file.arrayBuffer();
+        bytes = new Uint8Array(buffer);
+      }
+
       const inspection = await inspectPdfIntegrity(bytes);
 
       parsed.push({
         id: `pdf-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-        fileName: uniqueName,
+        fileName: targetName,
         originalFileName: file.name,
         fileSize: file.size,
         bytes,
@@ -142,7 +188,7 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
 
         <CardContent className="space-y-3 p-4">
           <FileUploader
-            accept=".pdf,application/pdf"
+            accept=".pdf,application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             multiple
             label={t.upload.dropzoneLabel}
             buttonLabel={t.upload.selectPdfBtn}

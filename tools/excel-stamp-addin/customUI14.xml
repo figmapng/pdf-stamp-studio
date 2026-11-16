@@ -1,0 +1,17 @@
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui">
+  <ribbon>
+    <tabs>
+      <tab idMso="TabHome">
+        <group id="PdfStampStudioGroup" label="PDF Stamp Studio">
+          <button id="btnPdfStampStudio"
+                  label="Создать PDF с подписями"
+                  size="large"
+                  imageMso="FileSaveAsPdfOrXps"
+                  onAction="PdfStampRibbonCallback"
+                  screentip="Создать PDF с подписями и печатью"
+                  supertip="Автоматически находит строки Инженер-химик Затыбек А. А. и Заведующий лабораторией Сатыбалдина З. С., проставляет подписи и печать, и сохраняет единый PDF (Ctrl+Shift+P)"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

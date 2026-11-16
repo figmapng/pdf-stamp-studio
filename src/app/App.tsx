@@ -24,8 +24,10 @@ import type {
   SignerConfig,
   StampConfig,
   UploadedPdfFile,
+  PngAsset,
 } from '../types';
 import { getTranslations } from '../i18n';
+import { inspectPngBytes } from '../engine/image-processing';
 import { DEFAULT_THRESHOLDS } from '../engine/anchor-detection';
 import { createDefaultStampPolicy, DEFAULT_STAMP_POLICY } from '../engine/stamp-policy';
 import { revalidateMultiDocumentResult } from '../engine/pipeline';
@@ -97,8 +99,83 @@ function makeSignerConfig(id: string, fullName = '', roleNames: string[] = []): 
   };
 }
 
+async function loadDefaultEcologyProfiles(): Promise<{ signers: SignerConfig[]; stamps: StampConfig[] }> {
+  const loadAsset = async (url: string, fileName: string, kind: 'SIGNATURE' | 'STAMP'): Promise<PngAsset | null> => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const arrayBuf = await res.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+      const inspection = await inspectPngBytes(bytes);
+      if (!inspection.isValid) return null;
+      const blob = new Blob([bytes], { type: 'image/png' });
+      return {
+        id: `${kind}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        kind,
+        fileName,
+        fileSize: bytes.byteLength,
+        bytes,
+        objectUrl: URL.createObjectURL(blob),
+        naturalWidth: inspection.width,
+        naturalHeight: inspection.height,
+        opaqueBounds: inspection.opaqueBounds,
+        transparentPaddingRatio: inspection.transparentPaddingRatio,
+        hasAlphaTransparency: inspection.hasAlphaTransparency,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const [sig1Asset, sig2Asset, stampAsset] = await Promise.all([
+    loadAsset('/demo-assets/sig_zatybek.png', 'sig_zatybek.png', 'SIGNATURE'),
+    loadAsset('/demo-assets/sig_satybaldina.png', 'sig_satybaldina.png', 'SIGNATURE'),
+    loadAsset('/demo-assets/stamp.png', 'stamp.png', 'STAMP'),
+  ]);
+
+  const signers: SignerConfig[] = [
+    {
+      id: 'SIGNER_1',
+      profile: {
+        id: 'SIGNER_1',
+        label: 'Инженер-химик',
+        fullName: 'Затыбек А. А.',
+        nameVariants: ['Затыбек', 'Инженер-химик', 'Затыбек А.А.'],
+        roleNames: ['Инженер-химик'],
+        signatureAssetId: sig1Asset?.id ?? null,
+        enabled: true,
+      },
+      asset: sig1Asset,
+    },
+    {
+      id: 'SIGNER_2',
+      profile: {
+        id: 'SIGNER_2',
+        label: 'Заведующий лабораторией',
+        fullName: 'Сатыбалдина З. С.',
+        nameVariants: ['Сатыбалдина', 'Заведующий лабораторией', 'Сатыбалдина З.С.'],
+        roleNames: ['Заведующий лабораторией'],
+        signatureAssetId: sig2Asset?.id ?? null,
+        enabled: true,
+      },
+      asset: sig2Asset,
+    },
+  ];
+
+  const stamps: StampConfig[] = [
+    {
+      id: 'STAMP_1',
+      label: 'Печать ТОО Ecology Expert',
+      policy: createDefaultStampPolicy('SIGNER_2'),
+      asset: stampAsset,
+    },
+  ];
+
+  return { signers, stamps };
+}
+
 export const App: React.FC = () => {
-  const [language, setLanguage] = useState<AppLanguage>('kk');
+  const [language, setLanguage] = useState<AppLanguage>('ru');
   const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
 
   const [files, setFiles] = useState<UploadedPdfFile[]>([]);
@@ -186,6 +263,21 @@ export const App: React.FC = () => {
           }
         }
       }
+
+      // If no saved signers yet, initialize with default Ecology Expert profiles
+      if (!saved || (!saved.savedSignerConfigs?.length && !saved.savedSigners?.length)) {
+        loadDefaultEcologyProfiles().then((def) => {
+          if (!active) return;
+          if (def.signers.length > 0) {
+            setSigners(def.signers);
+            setStamps(def.stamps);
+            nextIdSeqRef.current = 3;
+          }
+          setPrefsLoaded(true);
+        });
+        return;
+      }
+
       setPrefsLoaded(true);
     });
     return () => {
