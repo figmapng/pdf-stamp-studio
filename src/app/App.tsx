@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Download,
   Layers,
   Lock,
   MoreHorizontal,
@@ -726,6 +727,16 @@ export const App: React.FC = () => {
                     <DropdownMenuItem onSelect={() => setActiveTab('design-system')}>
                       <Layers className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
                       {t.nav.designSystem}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <a
+                        href="/download/PdfStampSetup.exe"
+                        download="PdfStampSetup.exe"
+                        className="flex w-full items-center gap-2 text-xs font-medium text-[var(--color-primary)]"
+                      >
+                        <Download className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                        Excel қосымшасы (.exe)
+                      </a>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
