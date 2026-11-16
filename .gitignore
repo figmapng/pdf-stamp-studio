@@ -9,3 +9,6 @@ public/wasm/
 *.tsbuildinfo
 .vercel
 .env*
+.venv/
+*.log
+
