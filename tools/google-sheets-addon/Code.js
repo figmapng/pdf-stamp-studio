@@ -1,10 +1,7 @@
 /**
  * =========================================================================
- * PDF Stamp Studio — Google Sheets Apps Script (Автоматты есте сақтау нұсқасы)
+ * PDF Stamp Studio — Google Sheets Apps Script (Қатесіз 2 қадамдық нұсқа)
  * ТОО «Ecology Expert» зертханалық хаттамалары үшін
- * 
- * 1-ҚАДАМ: ✍️ Қол мен мөрді қою (Тексересіз, қажет болса мышкамен жылжытасыз)
- * 2-ҚАДАМ: 🚀 PDF сақтау (Жаңа орнын автоматты есте сақтап, PDF жасайды)
  * =========================================================================
  */
 
@@ -17,10 +14,11 @@ const CONFIG = {
     enabled: true,
     keywords: ['Затыбек', 'Инженер-химик'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_zatybek.png',
-    offsetX: 130,   // Бастапқы X орны (сызықтың ортасы)
-    offsetY: -22,   // Бастапқы Y орны (сызық үсті)
+    rowOffset: -1,   // Мәтіннен 1 қатар жоғары
+    offsetX: 130,    // Сызықтың тура ортасы
+    offsetY: 6,      // Оң мән (сызықтың дәл үстіне)
     width: 105,
-    height: 60
+    height: 55
   },
 
   // 2-қол қоюшы: Зертхана меңгерушісі Сатыбалдина З. С.
@@ -29,8 +27,9 @@ const CONFIG = {
     enabled: true,
     keywords: ['Сатыбалдина', 'Заведующий лабораторией'],
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/sig_satybaldina.png',
-    offsetX: 160,   // Бастапқы X орны
-    offsetY: -15,   // Бастапқы Y орны
+    rowOffset: -1,   // Мәтіннен 1 қатар жоғары
+    offsetX: 160,    // Сызықтың тура ортасы
+    offsetY: 12,     // Сызықтың үстінде
     width: 110,
     height: 38
   },
@@ -41,8 +40,9 @@ const CONFIG = {
     enabled: true,
     anchorKeyword: 'Сатыбалдина',
     imageUrl: 'https://pdf-stamp-studio.vercel.app/demo-assets/stamp.png',
-    offsetX: 160,   // Бастапқы X орны (қолтаңбаның үсті)
-    offsetY: -48,   // Бастапқы Y орны (сызықтың ортасы)
+    rowOffset: -2,   // 2 қатар жоғары
+    offsetX: 160,    // Қолтаңбаны басып тұратындай оңға
+    offsetY: 8,      // Мөрдің ортасы сызықты дәл кесіп өтеді
     width: 95,
     height: 95
   }
@@ -64,8 +64,6 @@ function onOpen() {
 
 /**
  * 1-ҚАДАМ: Қол мен мөрді кестеге қою
- * Экран бірден ашылып, қолдар мен мөр көрінеді.
- * Егер орны ұнамаса, мышкамен қалаған жеріңізге сүйреп қоюға болады!
  */
 function step1PlaceSignaturesAndStamp() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -80,12 +78,16 @@ function step1PlaceSignaturesAndStamp() {
       return;
     }
 
-    const currentSheet = ss.getActiveSheet();
+    // Экранды қолтаңбалар тұрған қатарға автоматты түрде апару
     const cell1 = findCellByKeywords(ss, CONFIG.signer1.keywords);
+    if (cell1) {
+      try {
+        cell1.getSheet().activate();
+        cell1.activate();
+      } catch (e) {}
+    }
 
-    // Браузер суреттерді бірден көрсетуі үшін автоматты жаңартамыз (redraw):
-    refreshSheetCanvas(ss, currentSheet, cell1);
-
+    SpreadsheetApp.flush();
     ss.toast('✅ Қойылды! Қажет болса мышкамен жылжытыңыз да, 2-қадамды басыңыз.', 'PDF Stamp', 6);
 
   } catch (e) {
@@ -95,9 +97,7 @@ function step1PlaceSignaturesAndStamp() {
 
 /**
  * 2-ҚАДАМ: PDF сақтау
- * ЕГЕР СІЗ СУРЕТТЕРДІ МЫШКАМЕН ЖЫЛЖЫТҚАН БОЛСАҢЫЗ:
- * Скрипт жаңа орындар мен өлшемдерді автоматты түрде есте сақтайды!
- * Келесі барлық хаттамаларда бірден сол жаңа орынға қойылатын болады.
+ * Егер мышкамен жылжытылса, жаңа орынды автоматты есте сақтап алады
  */
 function step2ExportPdf() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -106,19 +106,16 @@ function step2ExportPdf() {
   try {
     const existingCount = countPlacedImages(ss);
 
-    // Егер 1-қадам басылмаса, өзі қояды
     if (existingCount === 0) {
       ss.toast('Қолдар мен мөр қойылуда...', 'PDF Stamp', 2);
-      const placed = placeImagesOnSheet(ss);
-      if (placed === 0) {
-        ui.alert('⚠️ Қате: Кестеден қол қоюшылар табылмады!');
-        return;
-      }
+      placeImagesOnSheet(ss);
       SpreadsheetApp.flush();
       Utilities.sleep(1200);
     } else {
-      // ПАЙДАЛАНУШЫ МЫШКАМЕН ЖЫЛЖЫТҚАН ОРЫНДЫ АВТОМАТТЫ САҚТАУ:
-      autoSaveCurrentPositions(ss);
+      // Жаңа орындарды автоматты сақтау
+      try {
+        autoSaveCurrentPositions(ss);
+      } catch (err) {}
       SpreadsheetApp.flush();
       Utilities.sleep(800);
     }
@@ -137,47 +134,7 @@ function step2ExportPdf() {
 }
 
 /**
- * Пайдаланушы мышкамен жылжытқан жаңа орындар мен өлшемдерді есте сақтау
- */
-function autoSaveCurrentPositions(ss) {
-  const sheets = ss.getSheets();
-  const saved = {};
-
-  sheets.forEach(sheet => {
-    sheet.getImages().forEach(img => {
-      if (img.getAltTextDescription() === 'PDF_STAMP_STUDIO_ASSET') {
-        const key = img.getAltTextTitle();
-        if (key && CONFIG[key]) {
-          const anchor = img.getAnchorCell();
-          const keywordCell = findCellByKeywords(ss, CONFIG[key].keywords || [CONFIG[key].anchorKeyword]);
-          
-          let deltaRow = 0;
-          let deltaCol = 0;
-          if (keywordCell) {
-            deltaRow = anchor.getRow() - keywordCell.getRow();
-            deltaCol = anchor.getColumn() - keywordCell.getColumn();
-          }
-
-          saved[key] = {
-            deltaRow: deltaRow,
-            deltaCol: deltaCol,
-            offsetX: img.getAnchorCellXOffset(),
-            offsetY: img.getAnchorCellYOffset(),
-            width: img.getWidth(),
-            height: img.getHeight()
-          };
-        }
-      }
-    });
-  });
-
-  if (Object.keys(saved).length > 0) {
-    PropertiesService.getDocumentProperties().setProperty('SAVED_COORDS', JSON.stringify(saved));
-  }
-}
-
-/**
- * Суреттерді кестеге орналастыру (сақталған орындарды қолданады)
+ * Суреттерді кестеге қою
  */
 function placeImagesOnSheet(ss) {
   clearPlacedSignaturesAndStamps();
@@ -214,7 +171,7 @@ function placeImagesOnSheet(ss) {
 }
 
 /**
- * Ұяшық үстіне сурет қою (есте сақталған орын бойынша)
+ * Суретті жүктеп ұяшық үстіне қауіпсіз қою
  */
 function insertImageOverCell(cell, itemKey, defaultCfg) {
   const sheet = cell.getSheet();
@@ -223,29 +180,29 @@ function insertImageOverCell(cell, itemKey, defaultCfg) {
     throw new Error(defaultCfg.name + ' суреті жүктелмеді');
   }
 
-  let targetRow = cell.getRow();
+  let targetRow = Math.max(1, cell.getRow() + defaultCfg.rowOffset);
   let targetCol = cell.getColumn();
-  let offX = defaultCfg.offsetX;
-  let offY = defaultCfg.offsetY;
+  let offX = Math.max(0, defaultCfg.offsetX);
+  let offY = Math.max(0, defaultCfg.offsetY);
   let width = defaultCfg.width;
   let height = defaultCfg.height;
 
-  // Егер пайдаланушы бұрын мышкамен жылжытып, жаңа орнын сақтаған болса:
-  const savedProps = PropertiesService.getDocumentProperties().getProperty('SAVED_COORDS');
-  if (savedProps) {
-    try {
+  // Егер пайдаланушы бұрын мышкамен қойған жаңа орны сақталған болса:
+  try {
+    const savedProps = PropertiesService.getDocumentProperties().getProperty('SAVED_COORDS');
+    if (savedProps) {
       const saved = JSON.parse(savedProps);
       if (saved && saved[itemKey]) {
         const s = saved[itemKey];
         targetRow = Math.max(1, cell.getRow() + (s.deltaRow || 0));
         targetCol = Math.max(1, cell.getColumn() + (s.deltaCol || 0));
-        offX = s.offsetX !== undefined ? s.offsetX : offX;
-        offY = s.offsetY !== undefined ? s.offsetY : offY;
+        offX = Math.max(0, s.offsetX !== undefined ? s.offsetX : offX);
+        offY = Math.max(0, s.offsetY !== undefined ? s.offsetY : offY);
         width = s.width || width;
         height = s.height || height;
       }
-    } catch (e) {}
-  }
+    }
+  } catch (e) {}
 
   const image = sheet.insertImage(resp.getBlob(), targetCol, targetRow, offX, offY);
   image.setWidth(width);
@@ -256,7 +213,47 @@ function insertImageOverCell(cell, itemKey, defaultCfg) {
 }
 
 /**
- * Бастапқы зауыттық орынға қайтару (Сброс)
+ * Мышкамен жылжытылған орындарды есте сақтау
+ */
+function autoSaveCurrentPositions(ss) {
+  const sheets = ss.getSheets();
+  const saved = {};
+
+  sheets.forEach(sheet => {
+    sheet.getImages().forEach(img => {
+      try {
+        if (img.getAltTextDescription() === 'PDF_STAMP_STUDIO_ASSET') {
+          const key = img.getAltTextTitle();
+          if (key && CONFIG[key]) {
+            const anchor = img.getAnchorCell();
+            const keywordCell = findCellByKeywords(ss, CONFIG[key].keywords || [CONFIG[key].anchorKeyword]);
+            let deltaRow = 0;
+            let deltaCol = 0;
+            if (keywordCell) {
+              deltaRow = anchor.getRow() - keywordCell.getRow();
+              deltaCol = anchor.getColumn() - keywordCell.getColumn();
+            }
+            saved[key] = {
+              deltaRow: deltaRow,
+              deltaCol: deltaCol,
+              offsetX: Math.max(0, img.getAnchorCellXOffset() || 0),
+              offsetY: Math.max(0, img.getAnchorCellYOffset() || 0),
+              width: img.getWidth(),
+              height: img.getHeight()
+            };
+          }
+        }
+      } catch (e) {}
+    });
+  });
+
+  if (Object.keys(saved).length > 0) {
+    PropertiesService.getDocumentProperties().setProperty('SAVED_COORDS', JSON.stringify(saved));
+  }
+}
+
+/**
+ * Бастапқы орынға қайтару (Сброс)
  */
 function resetToDefaultCoordsAlert() {
   PropertiesService.getDocumentProperties().deleteProperty('SAVED_COORDS');
@@ -266,35 +263,15 @@ function resetToDefaultCoordsAlert() {
 }
 
 /**
- * Браузер суреттерді бірден көрсетуі үшін экранды автоматты жаңарту
- */
-function refreshSheetCanvas(ss, currentSheet, focusCell) {
-  SpreadsheetApp.flush();
-  const sheets = ss.getSheets();
-  const otherSheet = sheets.find(s => s.getSheetId() !== currentSheet.getSheetId() && !s.isSheetHidden());
-  if (otherSheet) {
-    ss.setActiveSheet(otherSheet);
-    SpreadsheetApp.flush();
-    Utilities.sleep(100);
-    ss.setActiveSheet(currentSheet);
-    if (focusCell) {
-      currentSheet.setActiveRange(focusCell);
-    }
-    SpreadsheetApp.flush();
-  } else if (focusCell) {
-    currentSheet.setActiveRange(focusCell);
-    SpreadsheetApp.flush();
-  }
-}
-
-/**
  * Қойылған суреттерді санау
  */
 function countPlacedImages(ss) {
   let count = 0;
   ss.getSheets().forEach(sheet => {
     sheet.getImages().forEach(img => {
-      if (img.getAltTextDescription() === 'PDF_STAMP_STUDIO_ASSET') count++;
+      try {
+        if (img.getAltTextDescription() === 'PDF_STAMP_STUDIO_ASSET') count++;
+      } catch (e) {}
     });
   });
   return count;
@@ -367,7 +344,7 @@ function fetchSpreadsheetPdfBlob(ss) {
 }
 
 /**
- * Дайын PDF жүктеу терезесі
+ * Жүктеу терезесі
  */
 function showDownloadDialog(ui, viewUrl, downloadUrl, fileName) {
   const html = `
