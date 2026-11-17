@@ -32,7 +32,6 @@ $studioDir = Join-Path $appData "PdfStampStudio"
 $xlstartDir = Join-Path $appData "Microsoft\Excel\XLSTART"
 $targetXlam = Join-Path $xlstartDir "PdfStampStudio.xlam"
 $legacyAddinXlam = Join-Path (Join-Path $appData "Microsoft\AddIns") "PdfStampStudio.xlam"
-$buildXlam = Join-Path $env:TEMP "PdfStampStudio_build.xlam"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $basPath = Join-Path $scriptDir "vba\PdfStampModule.bas"
@@ -82,6 +81,30 @@ function ConvertTo-AsciiVba($SourcePath, $TargetPath) {
         [void]$out.Append($converted + "`r`n")
     }
     [System.IO.File]::WriteAllText($TargetPath, $out.ToString(), [System.Text.Encoding]::ASCII)
+}
+
+# Excel must never be given a path with the user name in it: for non-Latin user names Windows reports
+# %TEMP% in the short 8.3 form (C:\Users\7CA9~1\...) and Excel cannot open it. Use a plain-ASCII folder.
+function Get-WorkDir {
+    $candidates = New-Object System.Collections.ArrayList
+    $common = [Environment]::GetFolderPath('CommonApplicationData')
+    if ($common) { [void]$candidates.Add((Join-Path $common 'PdfStampStudio')) }
+    if ($env:PUBLIC) { [void]$candidates.Add((Join-Path $env:PUBLIC 'Documents\PdfStampStudio')) }
+    [void]$candidates.Add((Join-Path $env:TEMP 'PdfStampStudio'))
+
+    $fallback = $null
+    foreach ($dir in $candidates) {
+        try {
+            if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            $probe = Join-Path $dir '.write-test'
+            Set-Content -Path $probe -Value 'x' -ErrorAction Stop
+            Remove-Item $probe -Force -ErrorAction SilentlyContinue
+            if (($dir -match '^[\x00-\x7F]+$') -and ($dir -notmatch '~')) { Write-Log "Work dir: $dir"; return $dir }
+            if ($null -eq $fallback) { $fallback = $dir }
+        } catch { Write-Log "Work dir $dir not usable: $($_.Exception.Message)" }
+    }
+    if ($fallback) { Write-Log "Work dir (non-ASCII fallback): $fallback"; return $fallback }
+    throw "Не удалось создать рабочую папку для сборки надстройки."
 }
 
 # Finds the REAL Microsoft Excel. With WPS Office installed, the ProgID "Excel.Application" can point
@@ -302,6 +325,10 @@ foreach ($dir in @($studioDir, $xlstartDir)) {
 if (-not (Test-Path $basPath)) { Fail "Не найден файл надстройки: $basPath" }
 if (-not (Test-Path $xmlPath)) { Fail "Не найден файл ленты: $xmlPath" }
 
+$workDir = Get-WorkDir
+$buildXlam = Join-Path $workDir "PdfStampStudio_build.xlam"
+Write-Log "TEMP=$env:TEMP | APPDATA=$appData | work=$workDir"
+
 Enable-BuildAccess
 $ribbonXml = [System.IO.File]::ReadAllText($xmlPath, [System.Text.Encoding]::UTF8)
 
@@ -318,7 +345,7 @@ try {
         $excel.DisplayAlerts = $false
     }
 
-    $asciiBas = Join-Path $env:TEMP "PdfStampModule_ascii.bas"
+    $asciiBas = Join-Path $workDir "PdfStampModule_ascii.bas"
     ConvertTo-AsciiVba -SourcePath $basPath -TargetPath $asciiBas
     Write-Log "ASCII module written"
 

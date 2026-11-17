@@ -1,18 +1,23 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Plus, Stamp, Trash2, UserCheck } from 'lucide-react';
+import { AlertTriangle, Check, Plus, Save, Stamp, Trash2, UserCheck } from 'lucide-react';
 import type { PersonProfile, PngAsset, SignerConfig, StampConfig } from '../../types';
 import type { Translations } from '../../i18n';
 import { findSharedNameTokens } from '../../engine/text-normalizer';
 import { cn } from '../../lib/cn';
-import { Button, Card, CardContent, CardHeader, CardTitle, IconButton, Input, Switch } from '../ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, IconButton, Input } from '../ui';
 import { AssetManagerCard } from './AssetManagerCard';
 import { StampSettingsPanel } from '../stamp-settings/StampSettingsPanel';
 
 interface ProfileSetupPanelProps {
   signers: SignerConfig[];
   stamps: StampConfig[];
-  rememberInBrowser: boolean;
-  onRememberInBrowserChange: (next: boolean) => void;
+  /** true when signatories/stamps were changed after the last Save */
+  isDirty: boolean;
+  /** time of the last Save click in this session (null = not saved yet in this session) */
+  savedAt: number | null;
+  /** running inside the Windows app (saved data also goes to the Excel button) */
+  isDesktop: boolean;
+  onSave: () => void;
   onAddSigner: () => void;
   onUpdateSigner: (id: string, next: SignerConfig) => void;
   onRemoveSigner: (id: string) => void;
@@ -170,8 +175,10 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
 export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
   signers,
   stamps,
-  rememberInBrowser,
-  onRememberInBrowserChange,
+  isDirty,
+  savedAt,
+  isDesktop,
+  onSave,
   onAddSigner,
   onUpdateSigner,
   onRemoveSigner,
@@ -180,7 +187,6 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
   onRemoveStamp,
   t,
 }) => {
-  const rememberSwitchId = useId();
   const listGridRef = useRef<HTMLDivElement | null>(null);
   const pendingAddKindRef = useRef<'SIGNER' | 'STAMP' | null>(null);
   const prevCountRef = useRef({ signers: signers.length, stamps: stamps.length });
@@ -260,14 +266,6 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
           <h2 id="profiles-heading" className="text-base font-bold text-[var(--color-text-primary)]">
             {t.profiles.heading}
           </h2>
-          <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] px-2.5 py-1">
-            <Switch
-              id={rememberSwitchId}
-              checked={rememberInBrowser}
-              onCheckedChange={onRememberInBrowserChange}
-              label={t.profiles.saveInBrowserLabel}
-            />
-          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
@@ -278,6 +276,43 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
           <Button variant="outline" size="sm" onClick={handleAddStamp} className="w-full sm:w-auto">
             <Stamp className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
             {t.profiles.addStampBtn}
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <span
+            role="status"
+            aria-live="polite"
+            className={
+              isDirty
+                ? 'inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-warning)]'
+                : 'inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-success)]'
+            }
+          >
+            {isDirty ? (
+              <>
+                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" />
+                {t.profiles.unsavedLabel}
+              </>
+            ) : (
+              <>
+                <Check className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />
+                {savedAt !== null
+                  ? isDesktop
+                    ? t.profiles.savedToExcelLabel
+                    : t.profiles.savedLabel
+                  : t.profiles.allSavedLabel}
+              </>
+            )}
+          </span>
+          <Button
+            variant={isDirty ? 'primary' : 'outline'}
+            size="sm"
+            disabled={!isDirty}
+            onClick={onSave}
+          >
+            <Save className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+            {t.profiles.saveBtn}
           </Button>
         </div>
       </div>

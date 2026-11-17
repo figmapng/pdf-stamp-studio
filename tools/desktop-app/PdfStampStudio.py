@@ -157,6 +157,28 @@ try {
 }
 """
 
+def get_work_root() -> str:
+    """Рабочая папка без имени пользователя в пути: для кириллических имён %TEMP% превращается в 8.3
+    (C:\\Users\\7CA9~1\\...), и Word/Excel такой путь не открывают."""
+    candidates = []
+    for env_name, parts in (("PROGRAMDATA", ("PdfStampStudio", "tmp")),
+                            ("PUBLIC", ("Documents", "PdfStampStudio", "tmp"))):
+        base = os.environ.get(env_name)
+        if base:
+            candidates.append(os.path.join(base, *parts))
+    for c in candidates:
+        try:
+            os.makedirs(c, exist_ok=True)
+            probe = os.path.join(c, ".write-test")
+            with open(probe, "w") as f:
+                f.write("x")
+            os.remove(probe)
+            if c.isascii() and "~" not in c:
+                return c
+        except OSError:
+            continue
+    return tempfile.gettempdir()
+
 class QuietHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=get_dist_dir(), **kwargs)
@@ -190,7 +212,7 @@ class DesktopApi:
         else:
             raise RuntimeError(f"Неподдерживаемый тип файла: {ext or file_name}")
 
-        work_dir = tempfile.mkdtemp(prefix='pss_')
+        work_dir = tempfile.mkdtemp(prefix='pss_', dir=get_work_root())
         try:
             in_path = os.path.join(work_dir, 'input' + ext)
             out_path = os.path.join(work_dir, 'output.pdf')

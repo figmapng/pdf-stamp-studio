@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -6,7 +6,6 @@ import {
   Lock,
   Play,
   Settings,
-  Stamp,
 } from 'lucide-react';
 import type {
   AppLanguage,
@@ -184,6 +183,16 @@ export const App: React.FC = () => {
   const [enableOpenCv, setEnableOpenCv] = useState(false);
   const [rememberProfiles, setRememberProfiles] = useState(true);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
+  // Signatories/stamps as of the last "Save" click; only these are stored and given to Excel.
+  const [savedProfiles, setSavedProfiles] = useState<{
+    signers: SignerConfig[];
+    stamps: StampConfig[];
+  } | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const isDesktopApp = useMemo(
+    () => new URLSearchParams(window.location.search).has('desktop'),
+    [],
+  );
 
   const [jobs, setJobs] = useState<Record<string, ProcessingJob>>({});
   const [results, setResults] = useState<Record<string, DocumentResult>>({});
@@ -283,18 +292,46 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  // What was loaded from storage counts as saved
+  useEffect(() => {
+    if (prefsLoaded && savedProfiles === null) setSavedProfiles({ signers, stamps });
+  }, [prefsLoaded, savedProfiles, signers, stamps]);
+
+  const profilesDirty =
+    savedProfiles !== null && (savedProfiles.signers !== signers || savedProfiles.stamps !== stamps);
+
+  const handleSaveProfiles = () => {
+    setSavedProfiles({ signers, stamps });
+    setSavedAt(Date.now());
+  };
+
+  // Warn before closing the window with unsaved signatories/stamps
+  useEffect(() => {
+    if (!profilesDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [profilesDirty]);
+
   // Persist settings, signatories, stamps, and their PNGs locally in IndexedDB
   useEffect(() => {
-    if (!prefsLoaded) return;
+    if (!prefsLoaded || savedProfiles === null) return;
     void savePreferences({
       language,
-      stampPolicy: stamps[0]?.policy ?? DEFAULT_STAMP_POLICY,
+      stampPolicy: savedProfiles.stamps[0]?.policy ?? DEFAULT_STAMP_POLICY,
       thresholds,
       ocrConfig,
       enableOpenCv,
       rememberProfileTextsOptIn: rememberProfiles,
-      savedSignerConfigs: rememberProfiles ? signers.map(serializeSignerConfig) : undefined,
-      savedStampConfigs: rememberProfiles ? stamps.map(serializeStampConfig) : undefined,
+      savedSignerConfigs: rememberProfiles
+        ? savedProfiles.signers.map(serializeSignerConfig)
+        : undefined,
+      savedStampConfigs: rememberProfiles
+        ? savedProfiles.stamps.map(serializeStampConfig)
+        : undefined,
     });
   }, [
     prefsLoaded,
@@ -303,22 +340,21 @@ export const App: React.FC = () => {
     ocrConfig,
     enableOpenCv,
     rememberProfiles,
-    signers,
-    stamps,
+    savedProfiles,
   ]);
 
-  // Windows shell: keep the Excel button's profiles in sync with the Profiles tab (debounced).
+  // Windows shell: hand the SAVED signatories/stamps to the Excel button.
   useEffect(() => {
-    if (!prefsLoaded) return;
-    const run = () => void syncProfilesToExcel(signers, stamps);
-    const timer = window.setTimeout(run, 600);
+    if (!prefsLoaded || savedProfiles === null) return;
+    const run = () => void syncProfilesToExcel(savedProfiles.signers, savedProfiles.stamps);
+    const timer = window.setTimeout(run, 200);
     // the desktop bridge can appear after the first render
     window.addEventListener('pywebviewready', run);
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('pywebviewready', run);
     };
-  }, [prefsLoaded, signers, stamps]);
+  }, [prefsLoaded, savedProfiles]);
 
   const latestUrlsRef = useRef<string[]>([]);
   useEffect(() => {
@@ -759,15 +795,14 @@ export const App: React.FC = () => {
           <header className="sticky top-0 z-[var(--z-sticky)] border-b border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]/95 backdrop-blur-xs">
             <div className={`mx-auto flex h-13 w-full ${containerWidth} items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5`}>
               <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-secondary)] text-indigo-300">
-                  <Stamp className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-                </div>
+                <img src="/icons/app-icon.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0" />
                 <h1 className="truncate text-sm font-bold tracking-tight text-[var(--color-text-primary)]">
                   {t.app.title}
                 </h1>
               </div>
 
               <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                {!isDesktopApp && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
@@ -783,6 +818,7 @@ export const App: React.FC = () => {
                     <p className="text-[var(--color-text-secondary)]">{t.app.legalBannerBody}</p>
                   </PopoverContent>
                 </Popover>
+                )}
 
                 <div
                   role="group"
@@ -840,6 +876,12 @@ export const App: React.FC = () => {
                     }`}
                   >
                     {tab.label}
+                    {tab.id === 'profiles' && profilesDirty && (
+                      <span
+                        aria-hidden="true"
+                        className="ml-1.5 inline-block h-2 w-2 rounded-full bg-amber-500 align-middle"
+                      />
+                    )}
                   </button>
                 ))}
               </nav>
@@ -930,8 +972,10 @@ export const App: React.FC = () => {
           <ProfileSetupPanel
             signers={signers}
             stamps={stamps}
-            rememberInBrowser={rememberProfiles}
-            onRememberInBrowserChange={setRememberProfiles}
+            isDirty={profilesDirty}
+            savedAt={savedAt}
+            isDesktop={isDesktopApp}
+            onSave={handleSaveProfiles}
             onAddSigner={handleAddSigner}
             onUpdateSigner={handleUpdateSigner}
             onRemoveSigner={handleRemoveSigner}
