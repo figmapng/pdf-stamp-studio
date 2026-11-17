@@ -166,8 +166,9 @@ export const ExcelAddinConfigPanel: React.FC<Props> = ({ language }) => {
               <p className="text-sm text-[var(--color-text-secondary)]">{t.browserOnly}</p>
               <div>
                 <a
-                  href="/download/PdfStampSetup.exe"
-                  download="PdfStampSetup.exe"
+                  href="https://github.com/figmapng/pdf-stamp-studio/releases/download/v1.0.0-addin/PdfStampStudioSetup.exe"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 text-sm font-semibold text-white hover:opacity-90"
                 >
                   <Download className="h-4 w-4" aria-hidden="true" />

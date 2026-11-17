@@ -226,6 +226,45 @@ class DesktopApi:
         """Совместимость со старым именем."""
         return self.convertOfficeToPdf(b64_data, file_name)
 
+    def saveFile(self, b64_data: str, file_name: str) -> dict:
+        """Сохраняет файл через окно «Сохранить как» (в WebView2 кнопка «Скачать» сама не работает)."""
+        try:
+            import webview
+            ext = os.path.splitext(file_name)[1].lower()
+            if ext == '.pdf':
+                types = ('PDF (*.pdf)',)
+            elif ext == '.zip':
+                types = ('ZIP (*.zip)',)
+            else:
+                types = ('Все файлы (*.*)',)
+
+            downloads = os.path.join(os.path.expanduser('~'), 'Downloads')
+            start_dir = downloads if os.path.isdir(downloads) else os.path.expanduser('~')
+
+            dialog_type = webview.FileDialog.SAVE if hasattr(webview, 'FileDialog') else webview.SAVE_DIALOG
+            result = webview.windows[0].create_file_dialog(
+                dialog_type, directory=start_dir, save_filename=file_name, file_types=types
+            )
+            if not result:
+                return {"success": False, "cancelled": True}
+            path = result if isinstance(result, str) else result[0]
+            if ext and not path.lower().endswith(ext):
+                path += ext
+
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(b64_data))
+
+            if os.name == 'nt':
+                try:
+                    subprocess.Popen(['explorer', '/select,', path])
+                except Exception:
+                    pass
+            return {"success": True, "path": path}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
     def syncProfiles(self, payload: dict) -> dict:
         """Пишет подписи, печати и config.ini в %APPDATA%\\PdfStampStudio для кнопки в Excel."""
         try:

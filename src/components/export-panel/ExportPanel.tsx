@@ -49,7 +49,33 @@ interface ExportPanelProps {
   t: Translations;
 }
 
-function triggerBrowserDownload(urlOrBlob: string | Blob, fileName: string) {
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Saves a file. In the Windows app the embedded browser cannot download by itself, so the app's
+ * own "Save as" dialog is used; in a normal browser a regular download starts.
+ */
+async function triggerBrowserDownload(urlOrBlob: string | Blob, fileName: string): Promise<void> {
+  const desktopApi = (
+    window as unknown as {
+      pywebview?: { api?: { saveFile?: (b64: string, name: string) => Promise<{ success: boolean; cancelled?: boolean; error?: string }> } };
+    }
+  ).pywebview?.api;
+
+  if (desktopApi?.saveFile) {
+    const blob = urlOrBlob instanceof Blob ? urlOrBlob : await (await fetch(urlOrBlob)).blob();
+    const res = await desktopApi.saveFile(await blobToBase64(blob), fileName);
+    if (!res.success && !res.cancelled) throw new Error(res.error || 'Save failed');
+    return;
+  }
+
   const isBlob = urlOrBlob instanceof Blob;
   const href = isBlob ? URL.createObjectURL(urlOrBlob) : urlOrBlob;
   const a = document.createElement('a');
@@ -191,10 +217,14 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     });
     const zipCopy = new Uint8Array(zipBytes.byteLength);
     zipCopy.set(zipBytes);
-    triggerBrowserDownload(
-      new Blob([zipCopy], { type: 'application/zip' }),
-      `pdf-stamp-studio-export-${Date.now()}.zip`,
-    );
+    try {
+      await triggerBrowserDownload(
+        new Blob([zipCopy], { type: 'application/zip' }),
+        `pdf-stamp-studio-export-${Date.now()}.zip`,
+      );
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
@@ -330,7 +360,12 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                             size="sm"
                             aria-label={t.exportPanel.downloadSingle}
                             onClick={() =>
-                              triggerBrowserDownload(job.exportedUrl!, `stamped-${doc.fileName}`)
+                              void triggerBrowserDownload(
+                                job.exportedUrl!,
+                                `stamped-${doc.fileName}`,
+                              ).catch((err: unknown) =>
+                                setExportError(err instanceof Error ? err.message : String(err)),
+                              )
                             }
                           >
                             <Download className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />

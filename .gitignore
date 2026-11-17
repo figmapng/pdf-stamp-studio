@@ -12,3 +12,11 @@ public/wasm/
 .venv/
 *.log
 
+
+# Windows build output (CI)
+build_out/
+build_tmp/
+release/
+/*.spec
+__pycache__/
+.claude/

@@ -752,7 +752,7 @@ Private Function PlaceSignature(ws As Worksheet, cand As Candidate, ByVal imgPat
     shp.Name = SHAPE_PREFIX & "S_" & sId
     shp.AlternativeText = "Подпись: " & label
     shp.Placement = xlMove
-    AvoidPageBreak ws, shp
+    AvoidPageBreak ws, shp, cx, lineY
     Set PlaceSignature = shp
     Exit Function
 Fail:
@@ -812,7 +812,7 @@ Private Function PlaceStamp(owner As Shape, ByVal imgPath As String, ByVal sec A
     shp.AlternativeText = "Печать: " & label
     shp.Placement = xlMove
     shp.ZOrder msoBringToFront
-    AvoidPageBreak ws, shp
+    AvoidPageBreak ws, shp, sx + sw / 2, sy + sh * 0.6
     Set PlaceStamp = shp
     Exit Function
 Fail:
@@ -820,9 +820,10 @@ Fail:
     Set PlaceStamp = Nothing
 End Function
 
-' A picture that straddles a page break would be cut in two in the PDF. Move it wholly onto the
-' page that holds most of it. Fails silently (e.g. no printer driver): the user can still drag it.
-Private Sub AvoidPageBreak(ws As Worksheet, shp As Shape)
+' A picture that straddles a page break would be cut in two in the PDF. It must end up on the page
+' that holds its reference point (refX/refY: the signature line, or the signature the stamp belongs to),
+' i.e. the page where the printed name is. Fails silently (e.g. no printer driver): the user can still drag it.
+Private Sub AvoidPageBreak(ws As Worksheet, shp As Shape, ByVal refX As Double, ByVal refY As Double)
     Dim i As Long
     Dim br As Double
     Dim n As Long
@@ -834,10 +835,10 @@ Private Sub AvoidPageBreak(ws As Worksheet, shp As Shape)
             br = ws.HPageBreaks(i).Location.Top
             If Err.Number = 0 Then
                 If br > shp.Top And br < shp.Top + shp.Height Then
-                    If (br - shp.Top) < shp.Height / 2 Then
-                        shp.Top = br + 1
+                    If refY >= br Then
+                        shp.Top = br + 1                                 ' reference is below the break
                     Else
-                        shp.Top = MaxD(0, br - shp.Height - 1)
+                        shp.Top = MaxD(0, br - shp.Height - 1)           ' reference is above the break
                     End If
                 End If
             End If
@@ -852,7 +853,7 @@ Private Sub AvoidPageBreak(ws As Worksheet, shp As Shape)
             br = ws.VPageBreaks(i).Location.Left
             If Err.Number = 0 Then
                 If br > shp.Left And br < shp.Left + shp.Width Then
-                    If (br - shp.Left) < shp.Width / 2 Then
+                    If refX >= br Then
                         shp.Left = br + 1
                     Else
                         shp.Left = MaxD(0, br - shp.Width - 1)

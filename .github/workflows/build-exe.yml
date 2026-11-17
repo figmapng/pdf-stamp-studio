@@ -1,10 +1,11 @@
-name: Build Windows Exe
+name: Build Windows Installer
 
 on:
   push:
     paths:
       - 'src/**'
       - 'tools/**'
+      - 'installer/**'
       - '.github/workflows/build-exe.yml'
   workflow_dispatch:
 
@@ -39,42 +40,52 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller pywebview
 
-      - name: Compile Standalone Desktop App with PyInstaller
+      # onedir (a folder, not a single file) starts instantly: nothing is unpacked on every launch
+      - name: Compile desktop app with PyInstaller
         run: |
-          pyinstaller --onefile --noconsole --name "PdfStampSetup" `
+          pyinstaller --noconfirm --clean --windowed --name "PdfStampStudio" `
+            --icon "tools/desktop-app/app.ico" `
+            --distpath build_out --workpath build_tmp `
             --add-data "dist;dist" `
             --add-data "tools/excel-stamp-addin;tools/excel-stamp-addin" `
             tools/desktop-app/PdfStampStudio.py
 
-      - name: Copy Exe to public/download
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
         run: |
-          if (!(Test-Path "public/download")) { New-Item -ItemType Directory -Path "public/download" -Force }
-          Copy-Item -Path "dist/PdfStampSetup.exe" -Destination "public/download/PdfStampSetup.exe" -Force
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\PdfStampStudio.iss
+          if (!(Test-Path "release\PdfStampStudioSetup.exe")) { throw "Installer was not created" }
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PdfStampSetup-Windows
-          path: dist/PdfStampSetup.exe
+          name: PdfStampStudioSetup-Windows
+          path: release/PdfStampStudioSetup.exe
+
+      - name: Remove old single-file exe from the release
+        if: startsWith(github.ref, 'refs/heads/main')
+        continue-on-error: true
+        run: gh release delete-asset v1.0.0-addin PdfStampSetup.exe --yes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create / Update GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main')
         with:
           tag_name: v1.0.0-addin
-          name: "PDF Stamp Studio — Приложение для Windows и Надстройка Excel"
+          name: "PDF Stamp Studio — программа для Windows и кнопка в Excel"
           body: |
-            ## 🚀 PDF Stamp Studio — Программа для Windows (Дизайн как на сайте)
-            
-            Полноценное настольное приложение с современным дизайном веб-сайта:
-            - Интерактивный предпросмотр и расстановка подписей и печати на листе протокола
-            - Поддержка перетаскивания файлов Excel (.xlsx, .xls) и PDF
-            - Предустановленные подписи (Инженер-химик Затыбек А. А., Заведующий лабораторией Сатыбалдина З. С.) и печать ТОО «Ecology Expert»
-            - Полностью на русском языке
-            - Встроенная кнопка установки надстройки в Excel (лента Ribbon, вкладка «Главная»)
-            
-            ### Скачать:
-            Скачайте файл **PdfStampSetup.exe** и запустите его двойным щелчком.
-          files: dist/PdfStampSetup.exe
+            ## PDF Stamp Studio для Windows
+
+            Скачайте **PdfStampStudioSetup.exe**, запустите и нажмите «Установить».
+            Программа появится в меню «Пуск» и (по желанию) на рабочем столе; удалить её можно в «Параметры → Приложения».
+
+            - Подпись и печать настраиваются один раз и сразу попадают в кнопку Excel
+            - В программе: вкладка «Кнопка в Excel» → «Установить кнопку в Excel»
+            - Работает без интернета; Word и Excel превращаются в PDF через установленный Microsoft Office
+          files: release/PdfStampStudioSetup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

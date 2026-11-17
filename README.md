@@ -34,3 +34,10 @@ npm run test:e2e
 - [Deployment Guide](docs/DEPLOYMENT.md)
 - [Detection Benchmark Report](docs/BENCHMARK_REPORT.md)
 - [Known Limitations & Open Issues](docs/KNOWN_LIMITATIONS.md)
+
+## Программа для Windows
+
+Установщик `PdfStampStudioSetup.exe` собирается в GitHub Actions (PyInstaller + Inno Setup) и лежит в
+[Releases](https://github.com/figmapng/pdf-stamp-studio/releases/tag/v1.0.0-addin). Он ставит программу для текущего
+пользователя (права администратора не нужны), создаёт ярлыки и запись в «Параметры → Приложения». Иконка:
+`tools/desktop-app/app.ico`; скрипт установщика: `installer/PdfStampStudio.iss`.
