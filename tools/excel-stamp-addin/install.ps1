@@ -67,6 +67,45 @@ function ConvertTo-AsciiVba($SourcePath, $TargetPath) {
     [System.IO.File]::WriteAllText($TargetPath, $out.ToString(), [System.Text.Encoding]::ASCII)
 }
 
+# Находит НАСТОЯЩИЙ Microsoft Excel. На ПК с WPS Office ProgID "Excel.Application" может вести в WPS
+# (он называет себя версией 12.0 и не имеет VBProject), поэтому проверяем каждого кандидата.
+function Test-RealExcel($app) {
+    try {
+        if ($null -eq $app) { return $false }
+        if ($app.Name -ne 'Microsoft Excel') { return $false }
+        if ([int][double]([string]$app.Version) -lt 14) { return $false }
+        return $true
+    } catch { return $false }
+}
+
+function Get-ExcelApp {
+    # 1) явный CLSID Microsoft Excel (не зависит от подмены ProgID)
+    try {
+        $type = [Type]::GetTypeFromCLSID([Guid]'00024500-0000-0000-C000-000000000046')
+        $app = [Activator]::CreateInstance($type)
+        if (Test-RealExcel $app) { Write-Log "Excel via CLSID, version $($app.Version)"; return @{ App = $app; Own = $true } }
+        Write-Log "CLSID gave a non-Excel app: name=$($app.Name) version=$($app.Version)"
+        try { $app.Quit() } catch {}
+    } catch { Write-Log "CLSID start failed: $($_.Exception.Message)" }
+
+    # 2) уже запущенный у пользователя Excel
+    try {
+        $app = [System.Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application')
+        if (Test-RealExcel $app) { Write-Log "Attached to running Excel, version $($app.Version)"; return @{ App = $app; Own = $false } }
+        Write-Log "Running app is not Microsoft Excel: name=$($app.Name) version=$($app.Version)"
+    } catch { Write-Log "No running Excel: $($_.Exception.Message)" }
+
+    # 3) обычный ProgID
+    try {
+        $app = New-Object -ComObject Excel.Application
+        if (Test-RealExcel $app) { Write-Log "Excel via ProgID, version $($app.Version)"; return @{ App = $app; Own = $true } }
+        Write-Log "ProgID gave a non-Excel app: name=$($app.Name) version=$($app.Version)"
+        try { $app.Quit() } catch {}
+    } catch { Write-Log "ProgID start failed: $($_.Exception.Message)" }
+
+    return $null
+}
+
 # Функция внедрения RibbonX XML (кнопка на ленте Главная в Excel)
 function Inject-RibbonX($filePath, $xmlContent) {
     try {
@@ -163,12 +202,17 @@ $ribbonXml = Get-Content $xmlPath -Raw -Encoding UTF8
 
 Write-Log "Install started (xlam target: $targetXlam)"
 $excel = $null
+$excelOwn = $true
 $buildError = $null
 try {
-    $excel = New-Object -ComObject Excel.Application
-    $excel.Visible = $false
-    $excel.DisplayAlerts = $false
-    Write-Log "Excel started, version $($excel.Version)"
+    $found = Get-ExcelApp
+    if ($null -eq $found) { throw "EXCEL_NOT_FOUND" }
+    $excel = $found.App
+    $excelOwn = $found.Own
+    if ($excelOwn) {
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+    }
 
     # VBA импортирует .bas в ANSI-кодировке системы. Чтобы кириллица работала на любом Windows,
     # каждая строка с кириллицей оборачивается в U("...\uXXXX...") (раскодируется в самой надстройке).
@@ -177,11 +221,9 @@ try {
     Write-Log "ASCII module written: $asciiBas"
 
     $wb = $excel.Workbooks.Add()
-    try {
-        $null = $wb.VBProject
-    } catch {
-        throw "VBA_ACCESS_DENIED"
-    }
+    $vbp = $null
+    try { $vbp = $wb.VBProject } catch { $vbp = $null }
+    if ($null -eq $vbp) { throw "VBA_ACCESS_DENIED" }
     $wb.VBProject.VBComponents.Import($asciiBas) | Out-Null
     Write-Log "VBA module imported"
     Remove-Item $asciiBas -Force -ErrorAction SilentlyContinue
@@ -206,7 +248,7 @@ finally {
         } catch {}
     }
     if ($excel) {
-        try { $excel.Quit() } catch {}
+        if ($excelOwn) { try { $excel.Quit() } catch {} }
         [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
         [System.GC]::Collect()
         [System.GC]::WaitForPendingFinalizers()
@@ -214,7 +256,9 @@ finally {
 }
 
 if ($buildError) {
-    if ($buildError -eq "VBA_ACCESS_DENIED" -or $buildError -match "VBProject|Programmatic|программн") {
+    if ($buildError -eq "EXCEL_NOT_FOUND") {
+        $buildError = "Не найден Microsoft Excel (возможно, его подменяет WPS Office). Откройте Microsoft Excel, оставьте его запущенным и повторите установку."
+    } elseif ($buildError -eq "VBA_ACCESS_DENIED" -or $buildError -match "VBProject|Programmatic|программн") {
         $buildError = "Excel не разрешил программе собрать надстройку. Откройте Excel: Файл -> Параметры -> Центр управления безопасностью -> Параметры центра управления безопасностью -> Параметры макросов -> включите «Доверять доступ к объектной модели проектов VBA», затем повторите установку."
     }
     [Console]::Error.WriteLine($buildError)
