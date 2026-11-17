@@ -90,8 +90,20 @@ function Test-RealExcel($app) {
     try {
         if ($null -eq $app) { return $false }
         if ($app.Name -ne 'Microsoft Excel') { return $false }
-        if ([int][double]([string]$app.Version) -lt 12) { return $false }
-        return $true
+        $ver = [int][double]([string]$app.Version)
+        if ($ver -lt 12) { return $false }
+
+        # Real Excel runs from EXCEL.EXE; WPS Spreadsheets (also "version 12.0") runs from et.exe / wps*.exe.
+        $exe = ''
+        try { $exe = [string]$app.FullName } catch {}
+        if ($exe -ne '') {
+            $ok = ($exe -match '(?i)\\excel\.exe$')
+            Write-Log "Excel candidate: exe=$exe version=$ver real=$ok"
+            return $ok
+        }
+        # cannot read the path: only trust modern versions (WPS reports 12.0)
+        Write-Log "Excel candidate without path: version=$ver"
+        return ($ver -ge 14)
     } catch { return $false }
 }
 
