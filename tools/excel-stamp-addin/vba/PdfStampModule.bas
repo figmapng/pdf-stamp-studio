@@ -312,7 +312,7 @@ Public Sub SavePdfWithStamps()
         RemoveOverlays wb
         RestoreSavedFlag wb
         Application.StatusBar = "PDF сохранён: " & usedPath
-        If openAfter Then OpenFileDefault wb, usedPath
+        If openAfter Then OpenFileDefault usedPath
     Else
         Dim hint As String
         hint = ""
@@ -385,15 +385,37 @@ Private Function CleanFileName(ByVal s As String) As String
     CleanFileName = s
 End Function
 
-Private Sub OpenFileDefault(wb As Workbook, ByVal path As String)
+' Opens the PDF with the Windows file association (no Office security prompts, unlike
+' FollowHyperlink). When no PDF viewer is registered, the file is shown in Explorer instead.
+Private Sub OpenFileDefault(ByVal path As String)
     On Error Resume Next
-    wb.FollowHyperlink path
+    If HasPdfHandler() Then
+        CreateObject("Shell.Application").ShellExecute path
+        If Err.Number = 0 Then Exit Sub
+        Err.Clear
+    End If
+    CreateObject("Shell.Application").ShellExecute "explorer.exe", "/select,""" & path & """"
     If Err.Number <> 0 Then
         Err.Clear
-        CreateObject("Shell.Application").ShellExecute path
+        Shell "explorer.exe /select,""" & path & """", vbNormalFocus
     End If
     On Error GoTo 0
 End Sub
+
+Private Function HasPdfHandler() As Boolean
+    Dim sh As Object
+    Dim v As String
+    On Error Resume Next
+    Set sh = CreateObject("WScript.Shell")
+    v = sh.RegRead("HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice\ProgId")
+    If Err.Number = 0 And Len(v) > 0 Then HasPdfHandler = True: Exit Function
+    Err.Clear
+    v = ""
+    v = sh.RegRead("HKCR\.pdf\")
+    If Err.Number = 0 And Len(v) > 0 Then HasPdfHandler = True
+    Err.Clear
+    On Error GoTo 0
+End Function
 
 ' =========================================================================
 ' Remove pictures
@@ -730,6 +752,7 @@ Private Function PlaceSignature(ws As Worksheet, cand As Candidate, ByVal imgPat
     shp.Name = SHAPE_PREFIX & "S_" & sId
     shp.AlternativeText = "Подпись: " & label
     shp.Placement = xlMove
+    AvoidPageBreak ws, shp
     Set PlaceSignature = shp
     Exit Function
 Fail:
@@ -789,12 +812,59 @@ Private Function PlaceStamp(owner As Shape, ByVal imgPath As String, ByVal sec A
     shp.AlternativeText = "Печать: " & label
     shp.Placement = xlMove
     shp.ZOrder msoBringToFront
+    AvoidPageBreak ws, shp
     Set PlaceStamp = shp
     Exit Function
 Fail:
     mLastError = Err.Description
     Set PlaceStamp = Nothing
 End Function
+
+' A picture that straddles a page break would be cut in two in the PDF. Move it wholly onto the
+' page that holds most of it. Fails silently (e.g. no printer driver): the user can still drag it.
+Private Sub AvoidPageBreak(ws As Worksheet, shp As Shape)
+    Dim i As Long
+    Dim br As Double
+    Dim n As Long
+
+    On Error Resume Next
+    n = ws.HPageBreaks.Count
+    If Err.Number = 0 Then
+        For i = 1 To n
+            br = ws.HPageBreaks(i).Location.Top
+            If Err.Number = 0 Then
+                If br > shp.Top And br < shp.Top + shp.Height Then
+                    If (br - shp.Top) < shp.Height / 2 Then
+                        shp.Top = br + 1
+                    Else
+                        shp.Top = MaxD(0, br - shp.Height - 1)
+                    End If
+                End If
+            End If
+            Err.Clear
+        Next i
+    End If
+    Err.Clear
+
+    n = ws.VPageBreaks.Count
+    If Err.Number = 0 Then
+        For i = 1 To n
+            br = ws.VPageBreaks(i).Location.Left
+            If Err.Number = 0 Then
+                If br > shp.Left And br < shp.Left + shp.Width Then
+                    If (br - shp.Left) < shp.Width / 2 Then
+                        shp.Left = br + 1
+                    Else
+                        shp.Left = MaxD(0, br - shp.Width - 1)
+                    End If
+                End If
+            End If
+            Err.Clear
+        Next i
+    End If
+    Err.Clear
+    On Error GoTo 0
+End Sub
 
 Private Function MaxD(ByVal a As Double, ByVal b As Double) As Double
     If a > b Then MaxD = a Else MaxD = b
