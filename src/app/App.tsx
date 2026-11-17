@@ -62,6 +62,7 @@ import {
   TooltipTrigger,
 } from '../components/ui';
 import { PdfUploader } from '../components/uploader/PdfUploader';
+import { syncProfilesToExcel } from '../lib/desktopSync';
 import { ProfileSetupPanel } from '../components/profile-setup/ProfileSetupPanel';
 import {
   ManualReviewCenter,
@@ -319,6 +320,19 @@ export const App: React.FC = () => {
     signers,
     stamps,
   ]);
+
+  // Windows shell: keep the Excel button's profiles in sync with the Profiles tab (debounced).
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    const run = () => void syncProfilesToExcel(signers, stamps);
+    const timer = window.setTimeout(run, 600);
+    // the desktop bridge can appear after the first render
+    window.addEventListener('pywebviewready', run);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pywebviewready', run);
+    };
+  }, [prefsLoaded, signers, stamps]);
 
   const latestUrlsRef = useRef<string[]>([]);
   useEffect(() => {
@@ -941,7 +955,7 @@ export const App: React.FC = () => {
 
           {/* Main Content */}
           <main id="main-content" tabIndex={-1} className={`mx-auto w-full ${containerWidth} flex-1 space-y-4 px-3 py-3 sm:px-5 sm:py-4`}>
-          {activeTab === 'excel' && <ExcelAddinConfigPanel />}
+          {activeTab === 'excel' && <ExcelAddinConfigPanel language={language} />}
           {activeTab === 'design-system' && <DesignSystemShowcase />}
 
           {activeTab === 'upload' && (

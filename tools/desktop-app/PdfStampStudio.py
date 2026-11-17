@@ -38,6 +38,87 @@ def get_free_port() -> int:
     s.close()
     return port
 
+
+def get_studio_dir() -> str:
+    app_data = os.environ.get("APPDATA") or os.path.expanduser("~")
+    return os.path.join(app_data, "PdfStampStudio")
+
+def _ini_text(value) -> str:
+    """Значение для INI: одна строка, без символов, ломающих формат."""
+    return str(value if value is not None else "").replace("\r", " ").replace("\n", " ").strip()
+
+def write_excel_profiles(payload: dict) -> str:
+    """Сохраняет профили (как на вкладке «Профили») в формате, который читает Excel-надстройка."""
+    studio_dir = get_studio_dir()
+    assets_dir = os.path.join(studio_dir, "assets")
+    os.makedirs(assets_dir, exist_ok=True)
+
+    # Старые картинки удаляем: в папке остаются только текущие профили
+    for name in os.listdir(assets_dir):
+        if name.lower().endswith(".png"):
+            try:
+                os.remove(os.path.join(assets_dir, name))
+            except OSError:
+                pass
+
+    def save_png(b64_str, file_name):
+        if not b64_str:
+            return ""
+        if "," in b64_str:
+            b64_str = b64_str.split(",", 1)[1]
+        with open(os.path.join(assets_dir, file_name), "wb") as f:
+            f.write(base64.b64decode(b64_str))
+        return file_name
+
+    signers = payload.get("signers", []) or []
+    stamps = payload.get("stamps", []) or []
+
+    lines = [
+        "[General]",
+        "AutoOpenPdf=1",
+        "Suffix=",
+        f"AppPath={_ini_text(sys.executable if getattr(sys, 'frozen', False) else '')}",
+        f"SignerCount={len(signers)}",
+        f"StampCount={len(stamps)}",
+        "",
+    ]
+    for i, sg in enumerate(signers, 1):
+        image = save_png(sg.get("imageBase64"), f"signer_{i}.png")
+        lines += [
+            f"[Signer{i}]",
+            f"Id={_ini_text(sg.get('id'))}",
+            f"Enabled={1 if sg.get('enabled', True) else 0}",
+            f"FullName={_ini_text(sg.get('fullName'))}",
+            "Names=" + "|".join(_ini_text(n).replace("|", " ") for n in sg.get("names", []) if _ini_text(n)),
+            "Roles=" + "|".join(_ini_text(r).replace("|", " ") for r in sg.get("roles", []) if _ini_text(r)),
+            f"ImageFile={image}",
+            f"WidthPt={float(sg.get('widthPt', 110) or 110)}",
+            "",
+        ]
+    for i, st in enumerate(stamps, 1):
+        image = save_png(st.get("imageBase64"), f"stamp_{i}.png")
+        lines += [
+            f"[Stamp{i}]",
+            f"Id={_ini_text(st.get('id'))}",
+            "Enabled=1",
+            f"Label={_ini_text(st.get('label'))}",
+            f"Owner={_ini_text(st.get('owner'))}",
+            f"Relation={_ini_text(st.get('relation'))}",
+            f"AnchorPosition={_ini_text(st.get('anchorPosition') or 'AUTO')}",
+            f"WidthPt={float(st.get('widthPt', 112) or 112)}",
+            f"OverlapRatio={float(st.get('overlapRatio', 0.3) or 0.3)}",
+            f"Rotation={float(st.get('rotation', 0) or 0)}",
+            f"ImageFile={image}",
+            "",
+        ]
+
+    ini_path = os.path.join(studio_dir, "config.ini")
+    tmp_path = ini_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8", newline="\r\n") as f:
+        f.write("\n".join(lines))
+    os.replace(tmp_path, ini_path)
+    return ini_path
+
 class QuietHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=get_dist_dir(), **kwargs)
@@ -111,133 +192,36 @@ class DesktopApi:
         except Exception as e:
             raise RuntimeError(f"Ошибка конвертации Excel: {e}")
 
-    def saveExcelConfig(self, cfg: dict) -> dict:
-        """Сохраняет config.ini и изображения подписей/печатей в %APPDATA%\\PdfStampStudio\\."""
+    def syncProfiles(self, payload: dict) -> dict:
+        """Пишет подписи, печати и config.ini в %APPDATA%\\PdfStampStudio для кнопки в Excel."""
         try:
-            app_data = os.environ.get("APPDATA") or os.path.expanduser("~")
-            studio_dir = os.path.join(app_data, "PdfStampStudio")
-            sig_dir = os.path.join(studio_dir, "signatures")
-            stamp_dir = os.path.join(studio_dir, "stamps")
-            os.makedirs(sig_dir, exist_ok=True)
-            os.makedirs(stamp_dir, exist_ok=True)
-
-            def save_b64(b64_str, target_path):
-                if b64_str and ',' in b64_str:
-                    b64_str = b64_str.split(',', 1)[1]
-                if b64_str:
-                    with open(target_path, 'wb') as f:
-                        f.write(base64.b64decode(b64_str))
-
-            sig1 = cfg.get('signer1', {})
-            if sig1.get('imageBase64'):
-                save_b64(sig1['imageBase64'], os.path.join(sig_dir, sig1.get('imageFile', 'sig_zatybek.png')))
-
-            sig2 = cfg.get('signer2', {})
-            if sig2.get('imageBase64'):
-                save_b64(sig2['imageBase64'], os.path.join(sig_dir, sig2.get('imageFile', 'sig_satybaldina.png')))
-
-            stamp = cfg.get('stamp', {})
-            if stamp.get('imageBase64'):
-                save_b64(stamp['imageBase64'], os.path.join(stamp_dir, stamp.get('imageFile', 'stamp.png')))
-
-            ini_path = os.path.join(studio_dir, "config.ini")
-            gen = cfg.get('general', {})
-            ini_lines = [
-                "[General]",
-                f"AutoOpenPdf={1 if gen.get('autoOpenPdf', True) else 0}",
-                f"Suffix={gen.get('suffix', '_утвержденный')}",
-                "",
-                "[Signer1]",
-                f"Enabled={1 if sig1.get('enabled', True) else 0}",
-                f"FullName={sig1.get('fullName', 'Затыбек А. А.')}",
-                f"Keywords={sig1.get('keywords', 'Затыбек,Инженер-химик')}",
-                f"ImageFile={sig1.get('imageFile', 'sig_zatybek.png')}",
-                f"OffsetX={sig1.get('offsetX', 70)}",
-                f"OffsetY={sig1.get('offsetY', -12)}",
-                f"Width={sig1.get('width', 110)}",
-                f"Height={sig1.get('height', 42)}",
-                "",
-                "[Signer2]",
-                f"Enabled={1 if sig2.get('enabled', True) else 0}",
-                f"FullName={sig2.get('fullName', 'Сатыбалдина З. С.')}",
-                f"Keywords={sig2.get('keywords', 'Сатыбалдина,Заведующий лабораторией')}",
-                f"ImageFile={sig2.get('imageFile', 'sig_satybaldina.png')}",
-                f"OffsetX={sig2.get('offsetX', 100)}",
-                f"OffsetY={sig2.get('offsetY', -12)}",
-                f"Width={sig2.get('width', 110)}",
-                f"Height={sig2.get('height', 42)}",
-                "",
-                "[Stamp]",
-                f"Enabled={1 if stamp.get('enabled', True) else 0}",
-                f"AnchorName={stamp.get('anchorName', 'Сатыбалдина')}",
-                f"ImageFile={stamp.get('imageFile', 'stamp.png')}",
-                f"OffsetX={stamp.get('offsetX', 40)}",
-                f"OffsetY={stamp.get('offsetY', -32)}",
-                f"Width={stamp.get('size', 95)}",
-                f"Height={stamp.get('size', 95)}",
-                ""
-            ]
-            with open(ini_path, 'w', encoding='utf-8') as f:
-                f.write("\n".join(ini_lines))
-
-            return {"success": True, "path": ini_path}
+            return {"success": True, "path": write_excel_profiles(payload)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def saveAndInstallExcelAddin(self, cfg: dict) -> dict:
-        """Сохраняет настройки и запускает установку надстройки в Excel."""
-        save_res = self.saveExcelConfig(cfg)
-        if not save_res.get("success"):
-            return save_res
-        return self.installExcelAddin()
-
-    def getExcelConfig(self) -> dict:
-        """Считывает текущий config.ini из %APPDATA%\\PdfStampStudio\\config.ini."""
+    def getExcelStatus(self) -> dict:
+        """Состояние кнопки Excel: установлена ли надстройка и сколько профилей настроено."""
         try:
-            import configparser
+            studio_dir = get_studio_dir()
+            ini_path = os.path.join(studio_dir, "config.ini")
+            signers = stamps = 0
+            if os.path.exists(ini_path):
+                with open(ini_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("SignerCount="):
+                            signers = int(line.split("=", 1)[1].strip() or 0)
+                        elif line.startswith("StampCount="):
+                            stamps = int(line.split("=", 1)[1].strip() or 0)
             app_data = os.environ.get("APPDATA") or os.path.expanduser("~")
-            ini_path = os.path.join(app_data, "PdfStampStudio", "config.ini")
-            if not os.path.exists(ini_path):
-                return {}
-            cp = configparser.ConfigParser()
-            cp.read(ini_path, encoding='utf-8')
-            res = {
-                "general": {
-                    "autoOpenPdf": cp.get("General", "AutoOpenPdf", fallback="1") == "1",
-                    "suffix": cp.get("General", "Suffix", fallback="_утвержденный")
-                },
-                "signer1": {
-                    "enabled": cp.get("Signer1", "Enabled", fallback="1") == "1",
-                    "fullName": cp.get("Signer1", "FullName", fallback="Затыбек А. А."),
-                    "keywords": cp.get("Signer1", "Keywords", fallback="Затыбек,Инженер-химик"),
-                    "imageFile": cp.get("Signer1", "ImageFile", fallback="sig_zatybek.png"),
-                    "offsetX": float(cp.get("Signer1", "OffsetX", fallback="70")),
-                    "offsetY": float(cp.get("Signer1", "OffsetY", fallback="-12")),
-                    "width": float(cp.get("Signer1", "Width", fallback="110")),
-                    "height": float(cp.get("Signer1", "Height", fallback="42")),
-                },
-                "signer2": {
-                    "enabled": cp.get("Signer2", "Enabled", fallback="1") == "1",
-                    "fullName": cp.get("Signer2", "FullName", fallback="Сатыбалдина З. С."),
-                    "keywords": cp.get("Signer2", "Keywords", fallback="Сатыбалдина,Заведующий лабораторией"),
-                    "imageFile": cp.get("Signer2", "ImageFile", fallback="sig_satybaldina.png"),
-                    "offsetX": float(cp.get("Signer2", "OffsetX", fallback="100")),
-                    "offsetY": float(cp.get("Signer2", "OffsetY", fallback="-12")),
-                    "width": float(cp.get("Signer2", "Width", fallback="110")),
-                    "height": float(cp.get("Signer2", "Height", fallback="42")),
-                },
-                "stamp": {
-                    "enabled": cp.get("Stamp", "Enabled", fallback="1") == "1",
-                    "anchorName": cp.get("Stamp", "AnchorName", fallback="Сатыбалдина"),
-                    "imageFile": cp.get("Stamp", "ImageFile", fallback="stamp.png"),
-                    "offsetX": float(cp.get("Stamp", "OffsetX", fallback="40")),
-                    "offsetY": float(cp.get("Stamp", "OffsetY", fallback="-32")),
-                    "size": float(cp.get("Stamp", "Width", fallback="95")),
-                }
+            xlam = os.path.join(app_data, "Microsoft", "Excel", "XLSTART", "PdfStampStudio.xlam")
+            return {
+                "installed": os.path.exists(xlam),
+                "signers": signers,
+                "stamps": stamps,
+                "configPath": ini_path,
             }
-            return res
         except Exception:
-            return {}
+            return {"installed": False, "signers": 0, "stamps": 0, "configPath": ""}
 
     def installExcelAddin(self) -> dict:
         """Запускает установщик надстройки в Excel."""
@@ -293,7 +277,7 @@ def main():
         import webview
         # Запуск в современном окне WebView2 (Edge Chromium)
         window = webview.create_window(
-            title="PDF Stamp Studio — Подписи и печать (ТОО Ecology Expert)",
+            title="PDF Stamp Studio — Подписи и печать",
             url=url,
             js_api=api,
             width=1280,

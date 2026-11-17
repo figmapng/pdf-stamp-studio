@@ -661,3 +661,296 @@ export function removeBackgroundFromRgba(
     cropBounds: { x: cropX, y: cropY, width: cropW, height: cropH },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Ink unmixing ("color-to-alpha") background removal
+// ---------------------------------------------------------------------------
+
+export interface InkExtractionOptions {
+  /** Extra padding in pixels kept around detected ink after tight cropping (default 2). */
+  cropPaddingPx?: number;
+  /** Drop isolated specks smaller than this many pixels (default: scaled to image size). */
+  minSpeckPx?: number;
+}
+
+/**
+ * Highest-fidelity background removal for ink on paper (signatures, round stamps).
+ *
+ * 1. Estimates the paper colour per pixel from bright tile percentiles (handles shadows and
+ *    uneven phone-photo lighting) and divides it out, so paper becomes pure white.
+ * 2. Unmixes every pixel as `ink * alpha + white * (1 - alpha)`: alpha is the strongest
+ *    channel deficit and the true ink colour is recovered. Anti-aliased strokes keep smooth,
+ *    exact edges with no halo (what GIMP calls colour-to-alpha).
+ * 3. Removes the paper noise floor (measured from the image itself) and tiny isolated specks.
+ * 4. Crops tightly to the remaining ink.
+ *
+ * Pure TypeScript, no network, no model downloads: works offline on any machine.
+ */
+export function extractInkFromRgba(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options?: InkExtractionOptions,
+): BackgroundRemovalResult {
+  const unchanged = (): BackgroundRemovalResult => ({
+    rgba: new Uint8ClampedArray(rgba),
+    width,
+    height,
+    removedPixels: 0,
+    keptPixels: width * height,
+    cropBounds: { x: 0, y: 0, width, height },
+  });
+  if (width <= 0 || height <= 0 || rgba.length < width * height * 4) return unchanged();
+
+  const cropPadding = Math.max(0, Math.min(24, Math.round(options?.cropPaddingPx ?? 2)));
+  const total = width * height;
+
+  // --- 1. Paper colour field -------------------------------------------------
+  const tile = Math.max(8, Math.round(Math.min(width, height) / 14));
+  const gx = Math.max(1, Math.ceil(width / tile));
+  const gy = Math.max(1, Math.ceil(height / tile));
+  const field = [new Float32Array(gx * gy), new Float32Array(gx * gy), new Float32Array(gx * gy)];
+  const globalPaper = [0, 0, 0];
+
+  // Global reference: 90th percentile of every channel over a sampled grid of opaque pixels.
+  {
+    const bins = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+    let n = 0;
+    const sx = Math.max(1, Math.floor(width / 160));
+    const sy = Math.max(1, Math.floor(height / 160));
+    for (let y = 0; y < height; y += sy) {
+      for (let x = 0; x < width; x += sx) {
+        const p = (y * width + x) * 4;
+        if ((rgba[p + 3] ?? 255) < 128) continue;
+        bins[0]![rgba[p] ?? 255]!++;
+        bins[1]![rgba[p + 1] ?? 255]!++;
+        bins[2]![rgba[p + 2] ?? 255]!++;
+        n++;
+      }
+    }
+    if (n === 0) return unchanged();
+    for (let c = 0; c < 3; c++) {
+      let acc = 0;
+      const target = n * 0.9;
+      let v = 255;
+      for (let i = 0; i < 256; i++) {
+        acc += bins[c]![i]!;
+        if (acc >= target) {
+          v = i;
+          break;
+        }
+      }
+      globalPaper[c] = Math.max(60, v);
+    }
+  }
+
+  for (let ty = 0; ty < gy; ty++) {
+    for (let tx = 0; tx < gx; tx++) {
+      const x0 = tx * tile;
+      const y0 = ty * tile;
+      const x1 = Math.min(width, x0 + tile);
+      const y1 = Math.min(height, y0 + tile);
+      const hist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+      let n = 0;
+      const sx = Math.max(1, Math.floor((x1 - x0) / 24));
+      const sy = Math.max(1, Math.floor((y1 - y0) / 24));
+      for (let y = y0; y < y1; y += sy) {
+        for (let x = x0; x < x1; x += sx) {
+          const p = (y * width + x) * 4;
+          if ((rgba[p + 3] ?? 255) < 128) continue;
+          hist[0]![rgba[p] ?? 255]!++;
+          hist[1]![rgba[p + 1] ?? 255]!++;
+          hist[2]![rgba[p + 2] ?? 255]!++;
+          n++;
+        }
+      }
+      for (let c = 0; c < 3; c++) {
+        let v = globalPaper[c]!;
+        if (n >= 4) {
+          let acc = 0;
+          const target = n * 0.85;
+          for (let i = 0; i < 256; i++) {
+            acc += hist[c]![i]!;
+            if (acc >= target) {
+              v = i;
+              break;
+            }
+          }
+          // A tile fully covered by ink must not be mistaken for paper.
+          v = Math.max(v, globalPaper[c]! * 0.8);
+          v = Math.min(255, Math.max(v, 40));
+        }
+        field[c]![ty * gx + tx] = v;
+      }
+    }
+  }
+
+  const paperAt = (c: number, x: number, y: number): number => {
+    const fx = (x + 0.5) / tile - 0.5;
+    const fy = (y + 0.5) / tile - 0.5;
+    const x0 = Math.max(0, Math.min(gx - 1, Math.floor(fx)));
+    const y0 = Math.max(0, Math.min(gy - 1, Math.floor(fy)));
+    const x1 = Math.min(gx - 1, x0 + 1);
+    const y1 = Math.min(gy - 1, y0 + 1);
+    const ax = Math.max(0, Math.min(1, fx - x0));
+    const ay = Math.max(0, Math.min(1, fy - y0));
+    const f = field[c]!;
+    return (
+      (f[y0 * gx + x0]! * (1 - ax) + f[y0 * gx + x1]! * ax) * (1 - ay) +
+      (f[y1 * gx + x0]! * (1 - ax) + f[y1 * gx + x1]! * ax) * ay
+    );
+  };
+
+  // --- 2. Unmix: alpha = largest deficit versus the paper ---------------------
+  const alpha = new Float32Array(total);
+  const inkR = new Float32Array(total);
+  const inkG = new Float32Array(total);
+  const inkB = new Float32Array(total);
+  const rawHist = new Uint32Array(256);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const p = i * 4;
+      const a0 = (rgba[p + 3] ?? 255) / 255;
+      if (a0 <= 0.02) {
+        alpha[i] = 0;
+        continue;
+      }
+      const rn = Math.min(1, (rgba[p] ?? 255) / paperAt(0, x, y));
+      const gn = Math.min(1, (rgba[p + 1] ?? 255) / paperAt(1, x, y));
+      const bn = Math.min(1, (rgba[p + 2] ?? 255) / paperAt(2, x, y));
+      const a = Math.max(1 - rn, 1 - gn, 1 - bn);
+      alpha[i] = a * a0;
+      inkR[i] = rn;
+      inkG[i] = gn;
+      inkB[i] = bn;
+      rawHist[Math.min(255, Math.round(a * 255))]!++;
+    }
+  }
+
+  // --- 3. Noise floor measured from the image itself -------------------------
+  // Paper dominates the histogram; its spread tells us where "no ink" ends.
+  let peak = 0;
+  for (let i = 0; i < 40; i++) if (rawHist[i]! > rawHist[peak]!) peak = i;
+  let acc = 0;
+  const paperTotal = (() => {
+    let s = 0;
+    for (let i = 0; i < 48; i++) s += rawHist[i]!;
+    return s;
+  })();
+  let floorBin = peak;
+  for (let i = peak; i < 64; i++) {
+    acc += rawHist[i]!;
+    if (acc >= paperTotal * 0.985) {
+      floorBin = i;
+      break;
+    }
+  }
+  const lo = Math.min(0.2, Math.max(0.04, (floorBin + 3) / 255));
+  const hi = 0.97;
+
+  // --- 4. Soft threshold, recover true ink colour, collect statistics ---------
+  const out = new Uint8ClampedArray(total * 4);
+  const mask = new Uint8Array(total);
+  for (let i = 0; i < total; i++) {
+    const raw = alpha[i]!;
+    if (raw <= lo) continue;
+    const a = Math.min(1, (raw - lo) / (hi - lo));
+    if (a <= 0.01) continue;
+    mask[i] = 1;
+    const p = i * 4;
+    out[p] = Math.round(Math.max(0, Math.min(1, (inkR[i]! - (1 - a)) / a)) * 255);
+    out[p + 1] = Math.round(Math.max(0, Math.min(1, (inkG[i]! - (1 - a)) / a)) * 255);
+    out[p + 2] = Math.round(Math.max(0, Math.min(1, (inkB[i]! - (1 - a)) / a)) * 255);
+    out[p + 3] = Math.round(a * 255);
+  }
+
+  // --- 5. Remove isolated specks (connected components, 8-neighbourhood) ------
+  const minSpeck = Math.max(
+    3,
+    Math.round(options?.minSpeckPx ?? Math.max(4, (width * height) / 60000)),
+  );
+  const seen = new Uint8Array(total);
+  const stack: number[] = [];
+  const comp: number[] = [];
+  let largest = 0;
+  const sizes: Array<{ idx: number[]; size: number }> = [];
+  for (let s = 0; s < total; s++) {
+    if (!mask[s] || seen[s]) continue;
+    stack.length = 0;
+    comp.length = 0;
+    stack.push(s);
+    seen[s] = 1;
+    while (stack.length) {
+      const cur = stack.pop()!;
+      comp.push(cur);
+      const cx = cur % width;
+      const cy = (cur - cx) / width;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (mask[ni] && !seen[ni]) {
+            seen[ni] = 1;
+            stack.push(ni);
+          }
+        }
+      }
+    }
+    sizes.push({ idx: comp.slice(), size: comp.length });
+    if (comp.length > largest) largest = comp.length;
+  }
+  // Specks are small relative to the strokes themselves, never relative to absolute size only.
+  const speckLimit = Math.min(minSpeck, Math.max(1, Math.floor(largest * 0.02)));
+  for (const c of sizes) {
+    if (c.size < speckLimit) {
+      for (const i of c.idx) {
+        mask[i] = 0;
+        out[i * 4 + 3] = 0;
+      }
+    }
+  }
+
+  // --- 6. Bounds and tight crop ----------------------------------------------
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  let kept = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!mask[y * width + x]) continue;
+      kept++;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (kept < 8 || maxX < minX) return unchanged();
+
+  const cx0 = Math.max(0, minX - cropPadding);
+  const cy0 = Math.max(0, minY - cropPadding);
+  const cx1 = Math.min(width - 1, maxX + cropPadding);
+  const cy1 = Math.min(height - 1, maxY + cropPadding);
+  const cw = cx1 - cx0 + 1;
+  const ch = cy1 - cy0 + 1;
+  const cropped = new Uint8ClampedArray(cw * ch * 4);
+  for (let row = 0; row < ch; row++) {
+    const src = ((cy0 + row) * width + cx0) * 4;
+    cropped.set(out.subarray(src, src + cw * 4), row * cw * 4);
+  }
+
+  return {
+    rgba: cropped,
+    width: cw,
+    height: ch,
+    removedPixels: total - kept,
+    keptPixels: kept,
+    cropBounds: { x: cx0, y: cy0, width: cw, height: ch },
+  };
+}

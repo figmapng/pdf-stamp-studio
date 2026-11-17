@@ -2,14 +2,33 @@
   <ribbon>
     <tabs>
       <tab idMso="TabHome">
-        <group id="PdfStampStudioGroup" label="PDF Stamp Studio">
-          <button id="btnPdfStampStudio"
-                  label="Создать PDF с подписями"
+        <group id="PdfStampStudioGroup" label="Подписи и печать">
+          <button id="btnPssPreview"
+                  label="1. Показать подписи"
+                  size="large"
+                  imageMso="PictureInsertFromFile"
+                  onAction="PdfStampRibbonPreview"
+                  screentip="Показать подписи и печать на листе"
+                  supertip="Находит подписантов в файле и ставит их подпись и печать на лист. Картинки можно перетащить мышью, если положение неточное."/>
+          <button id="btnPssSave"
+                  label="2. Сохранить PDF"
                   size="large"
                   imageMso="FileSaveAsPdfOrXps"
-                  onAction="PdfStampRibbonCallback"
-                  screentip="Создать PDF с подписями и печатью"
-                  supertip="Автоматически находит строки Инженер-химик Затыбек А. А. и Заведующий лабораторией Сатыбалдина З. С., проставляет подписи и печать, и сохраняет единый PDF (Ctrl+Shift+P)"/>
+                  onAction="PdfStampRibbonSave"
+                  screentip="Сохранить все листы в один PDF"
+                  supertip="Сохраняет все листы книги в одном PDF в том же порядке, вместе с подписями и печатью. Сам файл Excel не меняется (Ctrl+Shift+P)."/>
+          <button id="btnPssClear"
+                  label="Убрать"
+                  size="normal"
+                  imageMso="Delete"
+                  onAction="PdfStampRibbonClear"
+                  screentip="Убрать подписи и печать с листа"/>
+          <button id="btnPssSettings"
+                  label="Настройки"
+                  size="normal"
+                  imageMso="AdvancedFileProperties"
+                  onAction="PdfStampRibbonSettings"
+                  screentip="Открыть программу PDF Stamp Studio: подписи, печати, имена"/>
         </group>
       </tab>
     </tabs>

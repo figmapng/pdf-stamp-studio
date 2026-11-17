@@ -1,4 +1,4 @@
-import { removeBackgroundFromRgba } from './index';
+import { extractInkFromRgba, removeBackgroundFromRgba } from './index';
 
 export interface ProcessedAssetResult {
   pngBytes: Uint8Array;
@@ -133,10 +133,13 @@ export async function prepareUploadedAsset(options: {
     removeBackground === 'always' || (removeBackground === 'auto' && hadOpaqueBackground);
 
   if (shouldStrip) {
-    const cleaned = removeBackgroundFromRgba(rgba, width, height, {
-      tolerance,
-      cropPaddingPx: 2,
-    });
+    // Primary: illumination-normalised ink unmixing (smooth exact edges, true ink colour).
+    // Fallback: legacy threshold keying if unmixing finds no usable ink.
+    const unmixed = extractInkFromRgba(rgba, width, height, { cropPaddingPx: 2 });
+    const cleaned =
+      unmixed.removedPixels > 0
+        ? unmixed
+        : removeBackgroundFromRgba(rgba, width, height, { tolerance, cropPaddingPx: 2 });
     if (cleaned.removedPixels > 0 || !isNativePng) {
       const pngBytes = await encodeRgbaToPngBytes(cleaned.rgba, cleaned.width, cleaned.height);
       return {
