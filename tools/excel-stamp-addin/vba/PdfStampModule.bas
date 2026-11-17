@@ -2,19 +2,26 @@ Attribute VB_Name = "PdfStampModule"
 Option Explicit
 
 ' =========================================================================
-' PDF Stamp Studio - Excel add-in engine
+' PDF Stamp Studio - Excel add-in engine (Excel 2007 .. Microsoft 365, 32/64-bit)
 '
 ' Step 1  (button 1, show signatures): finds every configured signer in the open
-'         workbook, drops the signature / stamp PNGs onto the sheet as ordinary
+'         workbook and drops the signature / stamp PNGs onto the sheet as ordinary
 '         movable pictures (shapes named PSS_*). The user can drag / resize them.
 ' Step 2  (button 2, save PDF): exports ALL visible sheets in workbook order to one
 '         PDF (pictures included) and removes the pictures again, so the
 '         original Excel file stays clean.
 '
-' Configuration is written by the Windows app (Profiles tab) into
-'   %APPDATA%\PdfStampStudio\config.ini   (UTF-8)
+' Configuration is written by the Windows app into
+'   %APPDATA%\PdfStampStudio\config16.ini  (UTF-16, preferred)
+'   %APPDATA%\PdfStampStudio\config.ini    (UTF-8, fallback)
 '   %APPDATA%\PdfStampStudio\assets\*.png
 ' No network access is used anywhere.
+'
+' Compatibility rules followed here:
+'   * no early-bound references, no Declare statements (works in 32 and 64-bit)
+'   * no Scripting.Dictionary (VBA Collection instead); FSO / WScript / ADODB are
+'     optional and have fallbacks, because some companies block them
+'   * large sheets are scanned in blocks, never as one giant array
 ' =========================================================================
 
 Private Const APP_FOLDER As String = "PdfStampStudio"
@@ -30,7 +37,8 @@ Private Type Candidate
     Text As String
 End Type
 
-Private mSavedFlags As Object   ' workbook name -> original Saved flag
+Private mSavedFlags As Collection   ' workbook full name -> original Saved flag
+Private mLastError As String
 
 ' -------------------------------------------------------------------------
 ' Decodes \uXXXX escapes (the installer stores all non-ASCII text that way,
@@ -100,7 +108,7 @@ Public Sub ShowStampPreview()
     Set wb = GetWorkbook()
     If wb Is Nothing Then Exit Sub
 
-    Dim cfg As Object
+    Dim cfg As Collection
     Set cfg = LoadConfig()
     If cfg Is Nothing Then Exit Sub
 
@@ -121,21 +129,21 @@ Public Sub ShowStampPreview()
     Dim wasSaved As Boolean
     wasSaved = wb.Saved
 
+    Application.StatusBar = False
     Application.ScreenUpdating = False
     On Error GoTo Fail
 
-    RemoveOverlays wb, False
+    RemoveOverlays wb
     RememberSavedFlag wb, wasSaved
 
     Dim problems As String
-    Dim placed As Object
-    Set placed = CreateObject("Scripting.Dictionary")   ' signer id -> Shape
+    Dim placed As Collection
+    Set placed = New Collection   ' signer id -> Shape
 
     Dim i As Long
     Dim firstShape As Shape
+    Dim lastSig As Shape
     Dim okSigners As Long, okStamps As Long
-    Dim signerIds() As String
-    ReDim signerIds(1 To IIf(sigCount > 0, sigCount, 1))
 
     ' ---- signers ----
     For i = 1 To sigCount
@@ -143,7 +151,6 @@ Public Sub ShowStampPreview()
         sec = "Signer" & i
         Dim sId As String
         sId = CfgGet(cfg, sec, "Id", CStr(i))
-        signerIds(i) = sId
         If CfgGet(cfg, sec, "Enabled", "1") = "1" Then
             Dim label As String
             label = CfgGet(cfg, sec, "FullName", sec)
@@ -165,8 +172,13 @@ Public Sub ShowStampPreview()
                         Dim shp As Shape
                         Set shp = PlaceSignature(ws, cand, imgPath, _
                                     CDbl(Val(CfgGet(cfg, sec, "WidthPt", "110"))), sId, label)
-                        If Not shp Is Nothing Then
-                            Set placed(sId) = shp
+                        If shp Is Nothing Then
+                            problems = problems & "• " & label & ": не удалось вставить картинку (" & mLastError & ")." & vbCrLf
+                        Else
+                            On Error Resume Next
+                            placed.Add shp, sId
+                            On Error GoTo Fail
+                            Set lastSig = shp
                             okSigners = okSigners + 1
                             If firstShape Is Nothing Then Set firstShape = shp
                         End If
@@ -177,9 +189,6 @@ Public Sub ShowStampPreview()
     Next i
 
     ' ---- stamps ----
-    Dim lastSig As Shape
-    If placed.Count > 0 Then Set lastSig = placed(placed.Keys()(placed.Count - 1))
-
     For i = 1 To stampCount
         Dim stSec As String
         stSec = "Stamp" & i
@@ -200,7 +209,7 @@ Public Sub ShowStampPreview()
                 If owner = "MANUAL_PER_DOCUMENT" Or Len(owner) = 0 Then
                     manual = True
                     Set ownerShape = lastSig
-                ElseIf placed.Exists(owner) Then
+                ElseIf HasKey(placed, owner) Then
                     Set ownerShape = placed(owner)
                 End If
 
@@ -208,8 +217,10 @@ Public Sub ShowStampPreview()
                     problems = problems & "• Печать «" & stLabel & "»: подписант-владелец не найден в файле." & vbCrLf
                 Else
                     Dim st As Shape
-                    Set st = PlaceStamp(ownerShape, stImg, stSec, cfg, manual, owner, stLabel)
-                    If Not st Is Nothing Then
+                    Set st = PlaceStamp(ownerShape, stImg, stSec, cfg, manual, stLabel)
+                    If st Is Nothing Then
+                        problems = problems & "• Печать «" & stLabel & "»: не удалось вставить картинку (" & mLastError & ")." & vbCrLf
+                    Else
                         okStamps = okStamps + 1
                         If manual Then problems = problems & "• Печать «" & stLabel & "»: владелец «вручную» — проверьте положение." & vbCrLf
                     End If
@@ -217,8 +228,6 @@ Public Sub ShowStampPreview()
             End If
         End If
     Next i
-
-    ' keep signatures readable: stamps were added last, so they are on top (same as the website)
 
     Application.ScreenUpdating = True
     On Error Resume Next
@@ -234,9 +243,7 @@ Public Sub ShowStampPreview()
     Application.StatusBar = "Подписи и печати показаны (" & okSigners & " подп., " & okStamps & " печ.). " & _
         "Проверьте положение, при необходимости перетащите мышью, затем нажмите «Сохранить PDF»."
 
-    If okSigners + okStamps = 0 Then
-        RestoreSavedFlag wb
-    End If
+    If okSigners + okStamps = 0 Then RestoreSavedFlag wb
 
     If Len(problems) > 0 Then
         MsgBox "Нужно проверить:" & vbCrLf & vbCrLf & problems & vbCrLf & _
@@ -273,7 +280,7 @@ Public Sub SavePdfWithStamps()
         End If
     End If
 
-    Dim cfg As Object
+    Dim cfg As Collection
     Set cfg = LoadConfig(True)
 
     Dim outside As String
@@ -283,67 +290,110 @@ Public Sub SavePdfWithStamps()
                   vbCrLf & "Всё равно сохранить?", vbYesNo + vbExclamation, MSG_TITLE) = vbNo Then Exit Sub
     End If
 
-    Dim pdfPath As String
-    pdfPath = BuildPdfPath(wb, cfg)
-
     Dim openAfter As Boolean
-    openAfter = True
-    If Not cfg Is Nothing Then openAfter = (CfgGet(cfg, "General", "AutoOpenPdf", "1") = "1")
+    openAfter = (CfgGet(cfg, "General", "AutoOpenPdf", "1") = "1")
 
     Dim prevScreen As Boolean
     prevScreen = Application.ScreenUpdating
     Dim prevAlerts As Boolean
     prevAlerts = Application.DisplayAlerts
+    Application.StatusBar = False
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
-    Dim ok As Boolean
     Dim usedPath As String
-    usedPath = pdfPath
-    ok = TryExport(wb, usedPath, openAfter)
-    If Not ok Then
-        ' target file is probably open in a PDF viewer: save next to it with a time stamp
-        usedPath = Left$(pdfPath, Len(pdfPath) - 4) & " (" & Format(Now, "hhnnss") & ").pdf"
-        ok = TryExport(wb, usedPath, openAfter)
-    End If
+    Dim ok As Boolean
+    ok = ExportToFirstWorkingPath(wb, cfg, usedPath)
 
     Application.DisplayAlerts = prevAlerts
     Application.ScreenUpdating = prevScreen
 
     If ok Then
-        RemoveOverlays wb, True
+        RemoveOverlays wb
         RestoreSavedFlag wb
         Application.StatusBar = "PDF сохранён: " & usedPath
+        If openAfter Then OpenFileDefault wb, usedPath
     Else
-        MsgBox "Не удалось сохранить PDF:" & vbCrLf & usedPath & vbCrLf & vbCrLf & _
-               "Проверьте, что папка доступна для записи, и повторите. " & _
+        Dim hint As String
+        hint = ""
+        If InStr(1, mLastError, "ExportAsFixedFormat", vbTextCompare) > 0 Or InStr(mLastError, "438") > 0 Then
+            hint = vbCrLf & vbCrLf & "В Excel 2007 для сохранения в PDF нужна надстройка «Сохранить как PDF или XPS» от Microsoft."
+        End If
+        MsgBox "Не удалось сохранить PDF." & vbCrLf & vbCrLf & "Причина: " & mLastError & hint & vbCrLf & vbCrLf & _
                "Подписи на листе сохранены — можно нажать «Сохранить PDF» ещё раз.", vbCritical, MSG_TITLE
     End If
 End Sub
 
-Private Function TryExport(wb As Workbook, ByVal path As String, ByVal openAfter As Boolean) As Boolean
-    On Error GoTo EH
-    wb.ExportAsFixedFormat Type:=xlTypePDF, Filename:=path, Quality:=xlQualityStandard, _
-        IncludeDocProperties:=True, IgnorePrintAreas:=False, OpenAfterPublish:=openAfter
-    TryExport = True
-    Exit Function
-EH:
-    TryExport = False
-End Function
-
-Private Function BuildPdfPath(wb As Workbook, cfg As Object) As String
-    Dim folder As String
-    folder = wb.Path
-    If Len(folder) = 0 Or LCase$(Left$(folder, 4)) = "http" Then
-        folder = ShellExpand("%USERPROFILE%") & "\Documents"
-    End If
+' tries: beside the workbook, beside it with a time stamp (file open in a viewer),
+' Documents, Desktop
+Private Function ExportToFirstWorkingPath(wb As Workbook, cfg As Collection, ByRef usedPath As String) As Boolean
     Dim baseName As String
     baseName = wb.Name
     If InStrRev(baseName, ".") > 0 Then baseName = Left$(baseName, InStrRev(baseName, ".") - 1)
+    baseName = CleanFileName(baseName)
     Dim suffix As String
-    If Not cfg Is Nothing Then suffix = CfgGet(cfg, "General", "Suffix", "")
-    BuildPdfPath = folder & "\" & baseName & suffix & ".pdf"
+    suffix = CfgGet(cfg, "General", "Suffix", "")
+
+    Dim stamp As String
+    stamp = " (" & Format(Now, "hhnnss") & ")"
+
+    Dim cand As New Collection
+    Dim folder As String
+    folder = wb.Path
+    Dim cloud As Boolean
+    cloud = (Len(folder) = 0) Or (LCase$(Left$(folder, 4)) = "http")
+    If Not cloud Then
+        cand.Add folder & "\" & baseName & suffix & ".pdf"
+        cand.Add folder & "\" & baseName & suffix & stamp & ".pdf"
+    End If
+    cand.Add ShellExpand("%USERPROFILE%") & "\Documents\" & baseName & suffix & ".pdf"
+    cand.Add ShellExpand("%USERPROFILE%") & "\Desktop\" & baseName & suffix & stamp & ".pdf"
+
+    Dim i As Long
+    For i = 1 To cand.Count
+        ' Excel limits the full path to about 255 characters
+        If Len(cand(i)) <= 240 Then
+            If TryExport(wb, CStr(cand(i))) Then
+                usedPath = CStr(cand(i))
+                ExportToFirstWorkingPath = True
+                Exit Function
+            End If
+        End If
+    Next i
 End Function
+
+Private Function TryExport(wb As Workbook, ByVal path As String) As Boolean
+    On Error GoTo EH
+    wb.ExportAsFixedFormat Type:=xlTypePDF, Filename:=path, Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, IgnorePrintAreas:=False, OpenAfterPublish:=False
+    TryExport = True
+    Exit Function
+EH:
+    mLastError = Err.Description
+    If Len(mLastError) = 0 Then mLastError = "ошибка " & Err.Number
+    TryExport = False
+End Function
+
+Private Function CleanFileName(ByVal s As String) As String
+    Dim bad As Variant, i As Long
+    bad = Array("\", "/", ":", "*", "?", """", "<", ">", "|")
+    For i = 0 To UBound(bad)
+        s = Replace(s, bad(i), "_")
+    Next i
+    s = Trim$(s)
+    If Len(s) = 0 Then s = "document"
+    CleanFileName = s
+End Function
+
+Private Sub OpenFileDefault(wb As Workbook, ByVal path As String)
+    On Error Resume Next
+    wb.FollowHyperlink path
+    If Err.Number <> 0 Then
+        Err.Clear
+        CreateObject("Shell.Application").ShellExecute path
+    End If
+    On Error GoTo 0
+End Sub
 
 ' =========================================================================
 ' Remove pictures
@@ -352,12 +402,12 @@ Public Sub ClearStampPreview()
     Dim wb As Workbook
     Set wb = GetWorkbook()
     If wb Is Nothing Then Exit Sub
-    RemoveOverlays wb, True
+    RemoveOverlays wb
     RestoreSavedFlag wb
     Application.StatusBar = "Подписи и печати убраны с листа."
 End Sub
 
-Private Sub RemoveOverlays(wb As Workbook, ByVal quiet As Boolean)
+Private Sub RemoveOverlays(wb As Workbook)
     Dim ws As Object
     Dim i As Long
     For Each ws In wb.Worksheets
@@ -371,13 +421,13 @@ End Sub
 
 Private Function CountOverlays(wb As Workbook) As Long
     Dim ws As Object
-    Dim shp As Shape
+    Dim i As Long
     Dim n As Long
     For Each ws In wb.Worksheets
         On Error Resume Next
-        For Each shp In ws.Shapes
-            If Left$(shp.Name, Len(SHAPE_PREFIX)) = SHAPE_PREFIX Then n = n + 1
-        Next shp
+        For i = 1 To ws.Shapes.Count
+            If Left$(ws.Shapes(i).Name, Len(SHAPE_PREFIX)) = SHAPE_PREFIX Then n = n + 1
+        Next i
         On Error GoTo 0
     Next ws
     CountOverlays = n
@@ -414,18 +464,22 @@ End Function
 
 ' keep the "workbook has unsaved changes" flag clean: our temporary pictures are not a change
 Private Sub RememberSavedFlag(wb As Workbook, ByVal wasSaved As Boolean)
-    If mSavedFlags Is Nothing Then Set mSavedFlags = CreateObject("Scripting.Dictionary")
-    If Not mSavedFlags.Exists(wb.FullName) Then mSavedFlags(wb.FullName) = wasSaved
+    If mSavedFlags Is Nothing Then Set mSavedFlags = New Collection
+    If Not HasKey(mSavedFlags, wb.FullName) Then
+        On Error Resume Next
+        mSavedFlags.Add wasSaved, wb.FullName
+        On Error GoTo 0
+    End If
 End Sub
 
 Private Sub RestoreSavedFlag(wb As Workbook)
     If mSavedFlags Is Nothing Then Exit Sub
-    If mSavedFlags.Exists(wb.FullName) Then
+    If HasKey(mSavedFlags, wb.FullName) Then
         If CountOverlays(wb) = 0 Then
             On Error Resume Next
             wb.Saved = CBool(mSavedFlags(wb.FullName))
-            On Error GoTo 0
             mSavedFlags.Remove wb.FullName
+            On Error GoTo 0
         End If
     End If
 End Sub
@@ -433,7 +487,7 @@ End Sub
 ' =========================================================================
 ' Finding the signer in the workbook
 ' =========================================================================
-Private Function FindSigner(wb As Workbook, cfg As Object, ByVal idx As Long, ByVal total As Long) As Candidate
+Private Function FindSigner(wb As Workbook, cfg As Collection, ByVal idx As Long, ByVal total As Long) As Candidate
     Dim sec As String
     sec = "Signer" & idx
 
@@ -489,42 +543,70 @@ Private Function FindSigner(wb As Workbook, cfg As Object, ByVal idx As Long, By
         Dim ws As Worksheet
         Set ws = wb.Worksheets(si)
         If ws.Visible = xlSheetVisible Then
-            Dim ur As Range
-            Set ur = Nothing
-            On Error Resume Next
-            Set ur = ws.UsedRange
-            On Error GoTo 0
-            If Not ur Is Nothing Then
-                Dim vals As Variant
-                vals = ur.Value2
-                If IsArray(vals) Then
-                    Dim r As Long, c As Long
-                    For r = 1 To UBound(vals, 1)
-                        For c = 1 To UBound(vals, 2)
-                            If VarType(vals(r, c)) = vbString Then
-                                Dim t As String
-                                t = vals(r, c)
-                                If Len(t) >= 4 And Len(t) <= 500 Then
-                                    Dim sc As Long
-                                    sc = ScoreCell(t, names, nameCount, surname, roles, roleCount, vals, r, c)
-                                    If sc >= 60 And sc >= best.Score Then
-                                        best.Found = True
-                                        best.Score = sc
-                                        best.SheetIndex = si
-                                        best.Row = ur.Row + r - 1
-                                        best.Col = ur.Column + c - 1
-                                        best.Text = t
-                                    End If
-                                End If
-                            End If
-                        Next c
-                    Next r
-                End If
-            End If
+            ScanSheet ws, si, names, nameCount, surname, roles, roleCount, best
         End If
     Next si
     FindSigner = best
 End Function
+
+' reads the used range in blocks so huge or heavily formatted sheets cannot exhaust memory
+Private Sub ScanSheet(ws As Worksheet, ByVal si As Long, names() As String, ByVal nameCount As Long, _
+        ByVal surname As String, roles() As String, ByVal roleCount As Long, ByRef best As Candidate)
+    Dim ur As Range
+    On Error Resume Next
+    Set ur = ws.UsedRange
+    On Error GoTo 0
+    If ur Is Nothing Then Exit Sub
+
+    Dim nR As Long, nC As Long
+    nR = ur.Rows.Count
+    nC = ur.Columns.Count
+    If nR < 1 Or nC < 1 Then Exit Sub
+
+    Dim blockRows As Long
+    blockRows = 1500000 \ nC
+    If blockRows < 20 Then blockRows = 20
+    If blockRows > 4000 Then blockRows = 4000
+
+    Dim r0 As Long, r1 As Long
+    For r0 = 1 To nR Step blockRows
+        r1 = r0 + blockRows - 1
+        If r1 > nR Then r1 = nR
+
+        Dim vals As Variant
+        Dim blk As Range
+        Set blk = ur.Range(ur.Cells(r0, 1), ur.Cells(r1, nC))
+        vals = blk.Value2
+        If Not IsArray(vals) Then
+            Dim one As Variant
+            ReDim one(1 To 1, 1 To 1)
+            one(1, 1) = vals
+            vals = one
+        End If
+
+        Dim r As Long, c As Long
+        For r = 1 To UBound(vals, 1)
+            For c = 1 To UBound(vals, 2)
+                If VarType(vals(r, c)) = vbString Then
+                    Dim t As String
+                    t = vals(r, c)
+                    If Len(t) >= 4 And Len(t) <= 500 Then
+                        Dim sc As Long
+                        sc = ScoreCell(t, names, nameCount, surname, roles, roleCount, vals, r, c)
+                        If sc >= 60 And sc >= best.Score Then
+                            best.Found = True
+                            best.Score = sc
+                            best.SheetIndex = si
+                            best.Row = ur.Row + (r0 - 1) + r - 1
+                            best.Col = ur.Column + c - 1
+                            best.Text = t
+                        End If
+                    End If
+                End If
+            Next c
+        Next r
+    Next r0
+End Sub
 
 Private Function ScoreCell(ByVal txt As String, names() As String, ByVal nameCount As Long, _
         ByVal surname As String, roles() As String, ByVal roleCount As Long, _
@@ -571,7 +653,7 @@ Private Function SurnameOf(ByVal fullName As String) As String
     SurnameOf = NormText(fullName)
 End Function
 
-' lower-case, ё->е, Kazakh letters -> Russian, Latin look-alikes -> Cyrillic, drop spaces/dots/dashes/underscores
+' lower-case, yo->ye, Kazakh letters -> Russian, Latin look-alikes -> Cyrillic, drop spaces/dots/dashes/underscores
 Private Function NormText(ByVal s As String) As String
     Dim i As Long, code As Long
     Dim sb As String
@@ -582,15 +664,15 @@ Private Function NormText(ByVal s As String) As String
         Select Case code
             Case 32, 160, 9, 10, 13, 46, 44, 95, 45, 8208 To 8213, 40, 41, 58, 59, 8201, 8239
                 ' skipped
-            Case 1105: sb = sb & ChrW(1077)               ' ё -> е
-            Case 1241: sb = sb & ChrW(1072)               ' ә -> а
-            Case 1110: sb = sb & ChrW(1080)               ' і -> и
-            Case 1187: sb = sb & ChrW(1085)               ' ң -> н
-            Case 1171: sb = sb & ChrW(1075)               ' ғ -> г
-            Case 1199, 1201: sb = sb & ChrW(1091)         ' ү, ұ -> у
-            Case 1179: sb = sb & ChrW(1082)               ' қ -> к
-            Case 1257: sb = sb & ChrW(1086)               ' ө -> о
-            Case 1211: sb = sb & ChrW(1093)               ' һ -> х
+            Case 1105: sb = sb & ChrW(1077)               ' yo -> ye
+            Case 1241: sb = sb & ChrW(1072)               ' kk a-umlaut -> a
+            Case 1110: sb = sb & ChrW(1080)               ' kk i -> i
+            Case 1187: sb = sb & ChrW(1085)               ' kk n-hook -> n
+            Case 1171: sb = sb & ChrW(1075)               ' kk g-stroke -> g
+            Case 1199, 1201: sb = sb & ChrW(1091)         ' kk u -> u
+            Case 1179: sb = sb & ChrW(1082)               ' kk k-descender -> k
+            Case 1257: sb = sb & ChrW(1086)               ' kk o -> o
+            Case 1211: sb = sb & ChrW(1093)               ' kk h -> h
             Case 97: sb = sb & ChrW(1072)                 ' latin a
             Case 99: sb = sb & ChrW(1089)                 ' latin c
             Case 101: sb = sb & ChrW(1077)                ' latin e
@@ -611,9 +693,6 @@ End Function
 ' =========================================================================
 Private Function PlaceSignature(ws As Worksheet, cand As Candidate, ByVal imgPath As String, _
         ByVal widthPt As Double, ByVal sId As String, ByVal label As String) As Shape
-    Dim cel As Range
-    Set cel = ws.Cells(cand.Row, cand.Col)
-
     Dim cx As Double, lineY As Double
     Dim found As Boolean
     found = UnderscoreCenter(ws, cand.Row, cand.Col, cx, lineY)
@@ -623,7 +702,7 @@ Private Function PlaceSignature(ws As Worksheet, cand As Candidate, ByVal imgPat
         Dim d As Long, cc As Long
         For d = 1 To 4
             For cc = cand.Col - d To cand.Col + d Step 2 * d
-                If cc >= 1 Then
+                If cc >= 1 And cc <= ws.Columns.Count Then
                     If UnderscoreCenter(ws, cand.Row, cc, cx, lineY) Then found = True: Exit For
                 End If
             Next cc
@@ -635,32 +714,31 @@ Private Function PlaceSignature(ws As Worksheet, cand As Candidate, ByVal imgPat
         ' no line to sit on: put the signature just before the printed name
         Dim x0 As Double, lw As Double
         TextStart ws, cand.Row, cand.Col, cand.Text, x0, lw, lineY
-        Dim sur As String
-        sur = Trim$(cand.Text)
-        Dim p As Long
-        p = InStr(1, LCase$(cand.Text), LCase$(FirstToken(cand.Text)))
         cx = x0 - widthPt * 0.55
         If cx < widthPt / 2 Then cx = x0 + widthPt * 0.5
     End If
+
+    If widthPt < 20 Then widthPt = 110
 
     Dim shp As Shape
     On Error GoTo Fail
     Set shp = ws.Shapes.AddPicture(imgPath, msoFalse, msoTrue, 0, 0, -1, -1)
     shp.LockAspectRatio = msoTrue
     shp.Width = widthPt
-    shp.Left = Application.Max(0, cx - shp.Width / 2)
-    shp.Top = Application.Max(0, lineY - shp.Height * 0.78)
+    shp.Left = MaxD(0, cx - shp.Width / 2)
+    shp.Top = MaxD(0, lineY - shp.Height * 0.78)
     shp.Name = SHAPE_PREFIX & "S_" & sId
     shp.AlternativeText = "Подпись: " & label
     shp.Placement = xlMove
     Set PlaceSignature = shp
     Exit Function
 Fail:
+    mLastError = Err.Description
     Set PlaceSignature = Nothing
 End Function
 
-Private Function PlaceStamp(owner As Shape, ByVal imgPath As String, ByVal sec As String, cfg As Object, _
-        ByVal manual As Boolean, ByVal ownerId As String, ByVal label As String) As Shape
+Private Function PlaceStamp(owner As Shape, ByVal imgPath As String, ByVal sec As String, cfg As Collection, _
+        ByVal manual As Boolean, ByVal label As String) As Shape
     Dim ws As Worksheet
     Set ws = owner.Parent
 
@@ -704,8 +782,8 @@ Private Function PlaceStamp(owner As Shape, ByVal imgPath As String, ByVal sec A
         Case Else: x = sx - w * (1 - ratio)           ' OVERLAP_LEFT
     End Select
 
-    shp.Left = Application.Max(0, x)
-    shp.Top = Application.Max(0, y)
+    shp.Left = MaxD(0, x)
+    shp.Top = MaxD(0, y)
     shp.Rotation = rotation
     shp.Name = SHAPE_PREFIX & "T_" & CfgGet(cfg, sec, "Id", sec)
     shp.AlternativeText = "Печать: " & label
@@ -714,7 +792,12 @@ Private Function PlaceStamp(owner As Shape, ByVal imgPath As String, ByVal sec A
     Set PlaceStamp = shp
     Exit Function
 Fail:
+    mLastError = Err.Description
     Set PlaceStamp = Nothing
+End Function
+
+Private Function MaxD(ByVal a As Double, ByVal b As Double) As Double
+    If a > b Then MaxD = a Else MaxD = b
 End Function
 
 ' centre of the longest run of "_" in a cell, in sheet points, plus the baseline y
@@ -796,14 +879,6 @@ Private Function FontSizeOf(cel As Range) As Double
     On Error GoTo 0
 End Function
 
-Private Function FirstToken(ByVal s As String) As String
-    s = Trim$(s)
-    Dim p As Long
-    p = InStr(s, " ")
-    If p > 0 Then s = Left$(s, p - 1)
-    FirstToken = s
-End Function
-
 ' rough proportional-font width model (points); manual correction handles the rest
 Private Function EstWidth(ByVal s As String, ByVal fs As Double) As Double
     Dim i As Long, code As Long
@@ -825,7 +900,30 @@ Private Function EstWidth(ByVal s As String, ByVal fs As Double) As Double
 End Function
 
 ' =========================================================================
-' Config / files
+' Collections used instead of Scripting.Dictionary
+' =========================================================================
+Private Function HasKey(col As Collection, ByVal key As String) As Boolean
+    On Error Resume Next
+    Dim x As Variant
+    x = IsObject(col(key))
+    HasKey = (Err.Number = 0)
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+Private Function CfgGet(cfg As Collection, ByVal section As String, ByVal key As String, ByVal def As String) As String
+    CfgGet = def
+    If cfg Is Nothing Then Exit Function
+    Dim v As String
+    On Error Resume Next
+    v = cfg(section & "|" & key)
+    If Err.Number = 0 Then CfgGet = v
+    Err.Clear
+    On Error GoTo 0
+End Function
+
+' =========================================================================
+' Config / files (every optional COM object has a fallback)
 ' =========================================================================
 Private Function GetWorkbook() As Workbook
     Dim wb As Workbook
@@ -844,24 +942,73 @@ Private Function GetWorkbook() As Workbook
 End Function
 
 Private Function ShellExpand(ByVal s As String) As String
+    On Error Resume Next
     ShellExpand = CreateObject("WScript.Shell").ExpandEnvironmentStrings(s)
+    If Err.Number <> 0 Or Len(ShellExpand) = 0 Or InStr(ShellExpand, "%") > 0 Then
+        Err.Clear
+        ShellExpand = Environ(Replace(s, "%", ""))
+    End If
+    On Error GoTo 0
 End Function
 
 Private Function DataDir() As String
     DataDir = ShellExpand("%APPDATA%") & "\" & APP_FOLDER
 End Function
 
+Private Function FileExistsU(ByVal path As String) As Boolean
+    On Error Resume Next
+    FileExistsU = CreateObject("Scripting.FileSystemObject").FileExists(path)
+    If Err.Number <> 0 Then
+        Err.Clear
+        FileExistsU = (Len(Dir(path)) > 0)
+    End If
+    On Error GoTo 0
+End Function
+
 Private Function AssetPath(ByVal fileName As String) As String
     If Len(fileName) = 0 Then Exit Function
     Dim p As String
     p = DataDir() & "\assets\" & fileName
-    If CreateObject("Scripting.FileSystemObject").FileExists(p) Then AssetPath = p
+    If FileExistsU(p) Then AssetPath = p
 End Function
 
-Private Function LoadConfig(Optional ByVal silent As Boolean = False) As Object
-    Dim path As String
-    path = DataDir() & "\config.ini"
-    If Not CreateObject("Scripting.FileSystemObject").FileExists(path) Then
+' UTF-16 text through FileSystemObject (handles non-ANSI user names)
+Private Function ReadTextUtf16(ByVal path As String) As String
+    On Error GoTo EH
+    Dim ts As Object
+    Set ts = CreateObject("Scripting.FileSystemObject").OpenTextFile(path, 1, False, -1)
+    ReadTextUtf16 = ts.ReadAll
+    ts.Close
+    Exit Function
+EH:
+    ReadTextUtf16 = ""
+End Function
+
+Private Function ReadTextUtf8(ByVal path As String) As String
+    On Error GoTo EH
+    Dim st As Object
+    Set st = CreateObject("ADODB.Stream")
+    st.Type = 2
+    st.Charset = "utf-8"
+    st.Open
+    st.LoadFromFile path
+    ReadTextUtf8 = st.ReadText
+    st.Close
+    Exit Function
+EH:
+    ReadTextUtf8 = ""
+End Function
+
+Private Function LoadConfig(Optional ByVal silent As Boolean = False) As Collection
+    Dim dir16 As String, dir8 As String
+    dir16 = DataDir() & "\config16.ini"
+    dir8 = DataDir() & "\config.ini"
+
+    Dim txt As String
+    If FileExistsU(dir16) Then txt = ReadTextUtf16(dir16)
+    If Len(txt) = 0 And FileExistsU(dir8) Then txt = ReadTextUtf8(dir8)
+
+    If Len(txt) = 0 Then
         If Not silent Then
             MsgBox "Настройки не найдены." & vbCrLf & vbCrLf & _
                    "Откройте программу «PDF Stamp Studio», добавьте подписи и печати на вкладке «Подпись и печать» — " & _
@@ -870,62 +1017,51 @@ Private Function LoadConfig(Optional ByVal silent As Boolean = False) As Object
         Exit Function
     End If
 
-    Dim d As Object
-    Set d = CreateObject("Scripting.Dictionary")
-    d.CompareMode = 1
-
-    Dim st As Object
-    Set st = CreateObject("ADODB.Stream")
-    st.Type = 2
-    st.Charset = "utf-8"
-    st.Open
-    st.LoadFromFile path
-    Dim txt As String
-    txt = st.ReadText
-    st.Close
-
+    Dim d As New Collection
     Dim lines() As String
     lines = Split(Replace(txt, vbCr, ""), vbLf)
     Dim i As Long, section As String, ln As String, p As Long
     For i = 0 To UBound(lines)
         ln = Trim$(lines(i))
         If Len(ln) > 0 Then
+            If AscW(Left$(ln, 1)) = &HFEFF Then ln = Mid$(ln, 2)
             If Left$(ln, 1) = "[" And Right$(ln, 1) = "]" Then
                 section = Mid$(ln, 2, Len(ln) - 2)
             ElseIf Left$(ln, 1) <> ";" Then
                 p = InStr(ln, "=")
-                If p > 1 Then d(section & "|" & Trim$(Left$(ln, p - 1))) = Trim$(Mid$(ln, p + 1))
+                If p > 1 Then
+                    On Error Resume Next
+                    d.Add Trim$(Mid$(ln, p + 1)), section & "|" & Trim$(Left$(ln, p - 1))
+                    On Error GoTo 0
+                End If
             End If
         End If
     Next i
     Set LoadConfig = d
 End Function
 
-Private Function CfgGet(cfg As Object, ByVal section As String, ByVal key As String, ByVal def As String) As String
-    If cfg Is Nothing Then CfgGet = def: Exit Function
-    Dim k As String
-    k = section & "|" & key
-    If cfg.Exists(k) Then CfgGet = cfg(k) Else CfgGet = def
-End Function
-
 Private Function EnsureEditable(ws As Worksheet) As Boolean
-    If ws.ProtectDrawingObjects Or ws.ProtectContents Then
-        On Error Resume Next
-        ws.Unprotect ""
-        On Error GoTo 0
-    End If
+    On Error Resume Next
+    If ws.ProtectDrawingObjects Or ws.ProtectContents Then ws.Unprotect ""
     EnsureEditable = Not (ws.ProtectDrawingObjects Or ws.ProtectContents)
+    On Error GoTo 0
 End Function
 
 Public Sub OpenSettingsApp()
-    Dim cfg As Object
+    Dim cfg As Collection
     Set cfg = LoadConfig(True)
     Dim exe As String
     exe = CfgGet(cfg, "General", "AppPath", "")
-    If Len(exe) = 0 Or Not CreateObject("Scripting.FileSystemObject").FileExists(exe) Then
+    If Len(exe) = 0 Or Not FileExistsU(exe) Then
         MsgBox "Программу «PDF Stamp Studio» не удалось найти. Запустите её с рабочего стола или из меню «Пуск».", _
                vbInformation, MSG_TITLE
         Exit Sub
     End If
+    On Error Resume Next
     CreateObject("WScript.Shell").Run """" & exe & """", 1, False
+    If Err.Number <> 0 Then
+        Err.Clear
+        Shell """" & exe & """", vbNormalFocus
+    End If
+    On Error GoTo 0
 End Sub

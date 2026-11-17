@@ -1,4 +1,4 @@
-import type { SignerConfig, StampConfig } from '../types';
+import type { PngAsset, SignerConfig, StampConfig } from '../types';
 
 /**
  * Bridge to the Windows desktop shell (pywebview). In the browser build there is no bridge and
@@ -59,33 +59,75 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-export function buildExcelSyncPayload(
+/** Longest side (px) sent to Excel: sharp enough for print, small enough to keep PDFs light. */
+const MAX_EXCEL_IMAGE_SIDE = 1400;
+const encodedCache = new WeakMap<Uint8Array, string>();
+
+/** PNG as base64, downscaled when huge (phone photos are 4000 px+). Falls back to the original. */
+async function assetToBase64(asset: PngAsset | null): Promise<string | null> {
+  if (!asset) return null;
+  const cached = encodedCache.get(asset.bytes);
+  if (cached) return cached;
+
+  let out: string;
+  const longest = Math.max(asset.naturalWidth || 0, asset.naturalHeight || 0);
+  if (longest > MAX_EXCEL_IMAGE_SIDE && typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(new Blob([new Uint8Array(asset.bytes)], { type: 'image/png' }));
+      const scale = MAX_EXCEL_IMAGE_SIDE / Math.max(bitmap.width, bitmap.height);
+      const w = Math.max(1, Math.round(bitmap.width * scale));
+      const h = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no canvas');
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close();
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('encode failed');
+      out = bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
+    } catch {
+      out = bytesToBase64(asset.bytes);
+    }
+  } else {
+    out = bytesToBase64(asset.bytes);
+  }
+  encodedCache.set(asset.bytes, out);
+  return out;
+}
+
+export async function buildExcelSyncPayload(
   signers: SignerConfig[],
   stamps: StampConfig[],
-): ExcelSyncPayload {
+): Promise<ExcelSyncPayload> {
   return {
-    signers: signers.map((s) => ({
-      id: s.id,
-      enabled: s.profile.enabled !== false,
-      fullName: s.profile.fullName.trim(),
-      names: Array.from(new Set([s.profile.fullName, ...s.profile.nameVariants]))
-        .map((n) => n.trim())
-        .filter(Boolean),
-      roles: s.profile.roleNames.map((r) => r.trim()).filter(Boolean),
-      imageBase64: s.asset ? bytesToBase64(s.asset.bytes) : null,
-      widthPt: 110,
-    })),
-    stamps: stamps.map((st) => ({
-      id: st.id,
-      label: st.label,
-      owner: st.policy.owner,
-      relation: st.policy.relation,
-      anchorPosition: st.policy.anchorPosition ?? 'AUTO',
-      widthPt: st.policy.defaultWidthPt,
-      overlapRatio: st.policy.overlapRatio,
-      rotation: st.policy.defaultRotation,
-      imageBase64: st.asset ? bytesToBase64(st.asset.bytes) : null,
-    })),
+    signers: await Promise.all(
+      signers.map(async (s) => ({
+        id: s.id,
+        enabled: s.profile.enabled !== false,
+        fullName: s.profile.fullName.trim(),
+        names: Array.from(new Set([s.profile.fullName, ...s.profile.nameVariants]))
+          .map((n) => n.trim())
+          .filter(Boolean),
+        roles: s.profile.roleNames.map((r) => r.trim()).filter(Boolean),
+        imageBase64: await assetToBase64(s.asset),
+        widthPt: 110,
+      })),
+    ),
+    stamps: await Promise.all(
+      stamps.map(async (st) => ({
+        id: st.id,
+        label: st.label,
+        owner: st.policy.owner,
+        relation: st.policy.relation,
+        anchorPosition: st.policy.anchorPosition ?? 'AUTO',
+        widthPt: st.policy.defaultWidthPt,
+        overlapRatio: st.policy.overlapRatio,
+        rotation: st.policy.defaultRotation,
+        imageBase64: await assetToBase64(st.asset),
+      })),
+    ),
   };
 }
 
@@ -97,7 +139,7 @@ export async function syncProfilesToExcel(
   const api = getDesktopApi();
   if (!api?.syncProfiles) return;
   try {
-    await api.syncProfiles(buildExcelSyncPayload(signers, stamps));
+    await api.syncProfiles(await buildExcelSyncPayload(signers, stamps));
   } catch {
     // Sync is best-effort; the UI keeps working without it.
   }

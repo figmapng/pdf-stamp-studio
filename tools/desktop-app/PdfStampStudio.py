@@ -113,11 +113,15 @@ def write_excel_profiles(payload: dict) -> str:
             "",
         ]
 
+    text = "\n".join(lines)
     ini_path = os.path.join(studio_dir, "config.ini")
-    tmp_path = ini_path + ".tmp"
-    with open(tmp_path, "w", encoding="utf-8", newline="\r\n") as f:
-        f.write("\n".join(lines))
-    os.replace(tmp_path, ini_path)
+    # UTF-8 copy (status checks, fallback) and UTF-16 copy (read by the Excel add-in without ADODB)
+    for name, enc in (("config.ini", "utf-8"), ("config16.ini", "utf-16")):
+        target = os.path.join(studio_dir, name)
+        tmp_path = target + ".tmp"
+        with open(tmp_path, "w", encoding=enc, newline="\r\n") as f:
+            f.write(text)
+        os.replace(tmp_path, target)
     return ini_path
 
 OFFICE_CONVERT_PS1 = r"""
