@@ -13,9 +13,11 @@ export const kk = {
   },
   nav: {
     upload: '1. Жүктеу',
-    profiles: '2. Қол мен мөр',
-    review: '3. Тексеру',
-    export: '4. Экспорт',
+    profiles: 'Қол мен мөр',
+    review: '2. Тексеру',
+    export: '3. Экспорт',
+    documents: 'Құжаттар',
+    excel: 'Excel батырмасы',
     settings: 'Баптаулар',
   },
   upload: {
@@ -40,7 +42,8 @@ export const kk = {
     officeNeedsDesktop: 'Word және Excel файлдары PDF-ке Windows бағдарламасында айналады (Microsoft Office орнатылған болуы керек). Браузерде дайын PDF жүктеңіз.',
     officeConvertError: 'Файлды PDF-ке айналдыру мүмкін болмады',
     assetsQuickTitle: 'PNG активтер',
-    nextStep: 'Келесі: Қол мен мөр',
+    nextStep: 'Әрі қарай: Тексеру',
+    addProfilesFirst: 'Алдымен қол мен мөрді қосыңыз',
   },
   assets: {
     signatureA: '1-қол қоюшының қолтаңбасы',

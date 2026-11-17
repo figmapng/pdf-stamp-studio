@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
@@ -25,6 +26,14 @@ $addinXlam = Join-Path $addinsDir "PdfStampStudio.xlam"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $basPath = Join-Path $scriptDir "vba\PdfStampModule.bas"
 $xmlPath = Join-Path $scriptDir "customUI14.xml"
+$logPath = Join-Path $studioDir "install.log"
+
+function Write-Log($message) {
+    try {
+        if (-not (Test-Path $studioDir)) { New-Item -ItemType Directory -Path $studioDir -Force | Out-Null }
+        Add-Content -Path $logPath -Value ("[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $message) -Encoding UTF8
+    } catch {}
+}
 
 
 # Преобразует UTF-8 исходник VBA в чистый ASCII: строковые литералы с кириллицей -> U("\uXXXX")
@@ -91,8 +100,10 @@ function Inject-RibbonX($filePath, $xmlContent) {
 
         $zip.Dispose()
         Write-Host "✓ Кнопка ленты Ribbon (Главная панель) успешно встроена в .xlam!" -ForegroundColor Green
+        Write-Log "Ribbon injected"
     } catch {
-        Write-Warning "Предупреждение при внедрении ленты Ribbon: $_"
+        Write-Log "Ribbon injection failed: $($_ | Out-String)"
+        throw "Не удалось встроить кнопки в ленту Excel: $($_.Exception.Message)"
     }
 }
 
@@ -150,36 +161,42 @@ Write-Host "Запуск Excel для компиляции надстройки.
 
 $ribbonXml = Get-Content $xmlPath -Raw -Encoding UTF8
 
+Write-Log "Install started (xlam target: $targetXlam)"
 $excel = $null
+$buildError = $null
 try {
     $excel = New-Object -ComObject Excel.Application
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
-    
+    Write-Log "Excel started, version $($excel.Version)"
+
     # VBA импортирует .bas в ANSI-кодировке системы. Чтобы кириллица работала на любом Windows,
     # каждая строка с кириллицей оборачивается в U("...\uXXXX...") (раскодируется в самой надстройке).
     $asciiBas = Join-Path $env:TEMP "PdfStampModule_ascii.bas"
     ConvertTo-AsciiVba -SourcePath $basPath -TargetPath $asciiBas
+    Write-Log "ASCII module written: $asciiBas"
 
     $wb = $excel.Workbooks.Add()
+    try {
+        $null = $wb.VBProject
+    } catch {
+        throw "VBA_ACCESS_DENIED"
+    }
     $wb.VBProject.VBComponents.Import($asciiBas) | Out-Null
+    Write-Log "VBA module imported"
     Remove-Item $asciiBas -Force -ErrorAction SilentlyContinue
     $wb.IsAddin = $true
-    
+
     # 55 = xlOpenXMLAddIn (.xlam)
+    if (Test-Path $targetXlam) { Remove-Item $targetXlam -Force -ErrorAction SilentlyContinue }
     $wb.SaveAs($targetXlam, 55)
     $wb.Close($false)
+    Write-Log "xlam saved"
     Write-Host "✓ Базовый файл надстройки скомпилирован в XLSTART." -ForegroundColor Green
-
-    # Внедрение RibbonX XML в .xlam архив
-    Inject-RibbonX $targetXlam $ribbonXml
-
-    # Копирование в AddIns для максимальной совместимости
-    Copy-Item $targetXlam -Destination $addinXlam -Force
-    Write-Host "✓ Надстройка скопирована в AddIns." -ForegroundColor Green
 }
 catch {
-    Write-Warning "Ошибка автоматической сборки через Excel: $_"
+    $buildError = $_.Exception.Message
+    Write-Log "Build failed: $($_ | Out-String)"
 }
 finally {
     foreach ($k in $script:vbomBackup.Keys) {
@@ -189,11 +206,42 @@ finally {
         } catch {}
     }
     if ($excel) {
-        $excel.Quit()
+        try { $excel.Quit() } catch {}
         [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
         [System.GC]::Collect()
         [System.GC]::WaitForPendingFinalizers()
     }
+}
+
+if ($buildError) {
+    if ($buildError -eq "VBA_ACCESS_DENIED" -or $buildError -match "VBProject|Programmatic|программн") {
+        $buildError = "Excel не разрешил программе собрать надстройку. Откройте Excel: Файл -> Параметры -> Центр управления безопасностью -> Параметры центра управления безопасностью -> Параметры макросов -> включите «Доверять доступ к объектной модели проектов VBA», затем повторите установку."
+    }
+    [Console]::Error.WriteLine($buildError)
+    Write-Log "FAILED: $buildError"
+    exit 1
+}
+
+if (-not (Test-Path $targetXlam)) {
+    $msg = "Файл надстройки не был создан. Подробности: $logPath"
+    [Console]::Error.WriteLine($msg)
+    Write-Log "FAILED: xlam missing"
+    exit 1
+}
+
+try {
+    # Внедрение RibbonX XML в .xlam архив
+    Start-Sleep -Milliseconds 400
+    Inject-RibbonX $targetXlam $ribbonXml
+
+    # Копирование в AddIns для максимальной совместимости
+    Copy-Item $targetXlam -Destination $addinXlam -Force
+    Write-Host "✓ Надстройка скопирована в AddIns." -ForegroundColor Green
+    Write-Log "Install OK"
+} catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    Write-Log "FAILED after build: $($_ | Out-String)"
+    exit 1
 }
 
 Write-Host ""

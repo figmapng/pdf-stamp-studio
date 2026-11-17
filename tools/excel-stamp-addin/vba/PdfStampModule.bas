@@ -109,7 +109,7 @@ Public Sub ShowStampPreview()
     stampCount = CLng(Val(CfgGet(cfg, "General", "StampCount", "0")))
     If sigCount = 0 And stampCount = 0 Then
         MsgBox "В программе «PDF Stamp Studio» ещё не добавлены подписи и печати." & vbCrLf & vbCrLf & _
-               "Откройте программу, перейдите на вкладку «Профили», добавьте подписанта и загрузите его подпись.", _
+               "Откройте программу, перейдите на вкладку «Подпись и печать», добавьте подписанта и загрузите его подпись.", _
                vbInformation, MSG_TITLE
         Exit Sub
     End If
@@ -240,7 +240,7 @@ Public Sub ShowStampPreview()
 
     If Len(problems) > 0 Then
         MsgBox "Нужно проверить:" & vbCrLf & vbCrLf & problems & vbCrLf & _
-               "Картинки можно перетащить мышью или добавить имя в «Профили» программы.", _
+               "Картинки можно перетащить мышью или добавить имя во вкладке «Подпись и печать» программы.", _
                vbExclamation, MSG_TITLE
     End If
     Exit Sub
@@ -864,7 +864,7 @@ Private Function LoadConfig(Optional ByVal silent As Boolean = False) As Object
     If Not CreateObject("Scripting.FileSystemObject").FileExists(path) Then
         If Not silent Then
             MsgBox "Настройки не найдены." & vbCrLf & vbCrLf & _
-                   "Откройте программу «PDF Stamp Studio», добавьте подписи и печати на вкладке «Профили» — " & _
+                   "Откройте программу «PDF Stamp Studio», добавьте подписи и печати на вкладке «Подпись и печать» — " & _
                    "они появятся здесь автоматически.", vbInformation, MSG_TITLE
         End If
         Exit Function

@@ -13,9 +13,11 @@ export const ru = {
   },
   nav: {
     upload: '1. Загрузка',
-    profiles: '2. Подпись и печать',
-    review: '3. Проверка',
-    export: '4. Экспорт',
+    profiles: 'Подпись и печать',
+    review: '2. Проверка',
+    export: '3. Экспорт',
+    documents: 'Документы',
+    excel: 'Кнопка в Excel',
     settings: 'Настройки',
   },
   upload: {
@@ -40,7 +42,8 @@ export const ru = {
     officeNeedsDesktop: 'Word и Excel превращаются в PDF в программе для Windows (нужен установленный Microsoft Office). В браузере загрузите готовый PDF.',
     officeConvertError: 'Не удалось преобразовать файл в PDF',
     assetsQuickTitle: 'PNG-активы',
-    nextStep: 'Далее: Подпись и печать',
+    nextStep: 'Далее: Проверка',
+    addProfilesFirst: 'Сначала добавьте подпись и печать',
   },
   assets: {
     signatureA: 'Подпись подписанта 1',

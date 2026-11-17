@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  FileSpreadsheet,
   Lock,
   Play,
   Settings,
@@ -171,7 +170,10 @@ async function loadDefaultEcologyProfiles(): Promise<{ signers: SignerConfig[]; 
 
 export const App: React.FC = () => {
   const [language, setLanguage] = useState<AppLanguage>('ru');
-  const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
+    // The Windows app opens on signature/stamp setup; the website opens on document upload.
+    new URLSearchParams(window.location.search).has('desktop') ? 'profiles' : 'upload',
+  );
 
   const [files, setFiles] = useState<UploadedPdfFile[]>([]);
   const [signers, setSigners] = useState<SignerConfig[]>([]);
@@ -721,7 +723,6 @@ export const App: React.FC = () => {
 
   const navTabs: Array<{ id: ActiveTab; label: string }> = [
     { id: 'upload', label: t.nav.upload },
-    { id: 'profiles', label: t.nav.profiles },
     { id: 'review', label: t.nav.review },
     { id: 'export', label: t.nav.export },
   ];
@@ -733,6 +734,13 @@ export const App: React.FC = () => {
         ? 'max-w-6xl'
         : 'max-w-5xl';
   const activeStepIndex = navTabs.findIndex((tab) => tab.id === activeTab);
+  const isDocTab = activeTab === 'upload' || activeTab === 'review' || activeTab === 'export';
+  const noProfiles = signers.length === 0 && stamps.length === 0;
+  const mainTabs: Array<{ id: 'profiles' | 'docs' | 'excel'; label: string; active: boolean; go: () => void }> = [
+    { id: 'profiles', label: t.nav.profiles, active: activeTab === 'profiles', go: () => setActiveTab('profiles') },
+    { id: 'docs', label: t.nav.documents, active: isDocTab, go: () => { if (!isDocTab) setActiveTab('upload'); } },
+    { id: 'excel', label: t.nav.excel, active: activeTab === 'excel', go: () => setActiveTab('excel') },
+  ];
   const hasValidPdf = files.some((f) => f.isValid);
 
   return (
@@ -801,19 +809,6 @@ export const App: React.FC = () => {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
-                      variant={activeTab === 'excel' ? 'primary' : 'ghost'}
-                      size="sm"
-                      aria-label="Excel"
-                      icon={<FileSpreadsheet className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
-                      onClick={() => setActiveTab('excel')}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>Excel</TooltipContent>
-                </Tooltip>
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <IconButton
                       variant={activeTab === 'settings' ? 'primary' : 'ghost'}
                       size="sm"
                       aria-label={t.nav.settings}
@@ -827,6 +822,30 @@ export const App: React.FC = () => {
               </div>
             </div>
 
+            <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]">
+              <nav
+                aria-label="Main"
+                className={`mx-auto flex w-full ${containerWidth} items-center gap-1 overflow-x-auto px-3 py-1.5 sm:px-5`}
+              >
+                {mainTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    aria-current={tab.active ? 'page' : undefined}
+                    onClick={tab.go}
+                    className={`shrink-0 cursor-pointer rounded-[var(--radius-md)] px-3 py-1.5 text-sm transition-colors ${
+                      tab.active
+                        ? 'bg-[var(--color-primary-subtle)] font-bold text-[var(--color-primary)]'
+                        : 'font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-canvas)] hover:text-[var(--color-text-primary)]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            {isDocTab && (
             <div className="border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-canvas)]/70">
               <nav
                 aria-label="Primary"
@@ -890,6 +909,7 @@ export const App: React.FC = () => {
                 })}
               </nav>
             </div>
+            )}
           </header>
 
           {/* Main Content */}
@@ -974,21 +994,12 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {(activeTab === 'upload' ||
-        activeTab === 'profiles' ||
-        activeTab === 'review' ||
-        activeTab === 'export') && (
+      {isDocTab && (
         <div className="sticky bottom-0 z-[var(--z-sticky)] mt-auto border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xs">
           <div className={`mx-auto flex h-14 w-full ${containerWidth} items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5`}>
             <div>
-              {activeTab === 'profiles' && (
-                <Button variant="outline" size="md" onClick={() => setActiveTab('upload')}>
-                  <ArrowLeft className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-                  {t.profiles.prevStep}
-                </Button>
-              )}
               {activeTab === 'review' && (
-                <Button variant="outline" size="md" onClick={() => setActiveTab('profiles')}>
+                <Button variant="outline" size="md" onClick={() => setActiveTab('upload')}>
                   <ArrowLeft className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   {t.profiles.prevStep}
                 </Button>
@@ -999,27 +1010,18 @@ export const App: React.FC = () => {
                   {t.profiles.prevStep}
                 </Button>
               )}
+              {activeTab === 'upload' && noProfiles && (
+                <Button variant="outline" size="md" onClick={() => setActiveTab('profiles')}>
+                  {t.upload.addProfilesFirst}
+                </Button>
+              )}
             </div>
 
             <div>
               {activeTab === 'upload' && (
-                <Button
-                  size="md"
-                  disabled={!hasValidPdf}
-                  onClick={() => setActiveTab('profiles')}
-                >
-                  {t.upload.nextStep}
-                  <ArrowRight className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-                </Button>
-              )}
-              {activeTab === 'profiles' && (
-                <Button
-                  size="md"
-                  onClick={startAnalysis}
-                  disabled={!hasValidPdf || (signers.length === 0 && stamps.length === 0)}
-                >
+                <Button size="md" disabled={!hasValidPdf || noProfiles} onClick={startAnalysis}>
                   <Play className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-                  {t.stamp.startAnalysisBtn}
+                  {t.upload.nextStep}
                 </Button>
               )}
               {activeTab === 'review' && (

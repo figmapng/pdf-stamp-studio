@@ -253,44 +253,39 @@ class DesktopApi:
         except Exception:
             return {"installed": False, "signers": 0, "stamps": 0, "configPath": ""}
 
-    def installExcelAddin(self) -> dict:
-        """Запускает установщик надстройки в Excel."""
+    def _run_install_script(self, extra_args=None) -> dict:
         base = get_base_dir()
         install_script = os.path.join(base, 'tools', 'excel-stamp-addin', 'install.ps1')
         if not os.path.exists(install_script):
             install_script = os.path.join(os.path.dirname(__file__), '..', 'excel-stamp-addin', 'install.ps1')
 
-        cmd = [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-File", install_script
-        ]
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", install_script] + (extra_args or [])
+        kwargs = {}
+        if os.name == 'nt':
+            kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return {"success": True, "output": res.stdout}
-        except subprocess.CalledProcessError as e:
-            return {"success": False, "error": e.stderr or e.stdout}
+            res = subprocess.run(
+                cmd, capture_output=True, encoding='utf-8', errors='replace',
+                check=False, timeout=300, **kwargs
+            )
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Установка не завершилась за 5 минут. Закройте все окна Excel и повторите."}
+        except Exception as e:
+            return {"success": False, "error": f"Не удалось запустить установщик: {e}"}
+
+        if res.returncode != 0:
+            detail = (res.stderr or res.stdout or "").strip()
+            log_path = os.path.join(get_studio_dir(), "install.log")
+            return {"success": False, "error": (detail or "Ошибка установки.") + f"\n(Журнал: {log_path})"}
+        return {"success": True, "output": res.stdout}
+
+    def installExcelAddin(self) -> dict:
+        """Собирает надстройку и ставит кнопки в Excel."""
+        return self._run_install_script()
 
     def uninstallExcelAddin(self) -> dict:
         """Удаляет надстройку из Excel."""
-        base = get_base_dir()
-        install_script = os.path.join(base, 'tools', 'excel-stamp-addin', 'install.ps1')
-        if not os.path.exists(install_script):
-            install_script = os.path.join(os.path.dirname(__file__), '..', 'excel-stamp-addin', 'install.ps1')
-
-        cmd = [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-File", install_script,
-            "-Uninstall"
-        ]
-        try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return {"success": True, "output": res.stdout}
-        except subprocess.CalledProcessError as e:
-            return {"success": False, "error": e.stderr or e.stdout}
+        return self._run_install_script(["-Uninstall"])
 
     def isDesktop(self) -> bool:
         """Возвращает True если приложение запущено на рабочем столе Windows."""
@@ -299,7 +294,7 @@ class DesktopApi:
 def main():
     port = get_free_port()
     server = start_server(port)
-    url = f"http://127.0.0.1:{port}/index.html"
+    url = f"http://127.0.0.1:{port}/index.html?desktop=1"
 
     api = DesktopApi()
 
