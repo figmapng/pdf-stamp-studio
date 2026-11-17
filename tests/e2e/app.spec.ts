@@ -315,42 +315,6 @@ test.describe('PDF Stamp Studio — E2E Workflow & Network Privacy Audit', () =>
     expect(externalRequests).toEqual([]);
   });
 
-  test('renders Design System Showcase with interactive Dialog, AlertDialog, Sheet, Tabs, and Toast', async ({
-    page,
-  }) => {
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Қосымша' }).click();
-    await page.getByRole('menuitem', { name: 'UI жүйесі' }).click();
-    await expect(
-      page.getByRole('heading', { name: 'PDF Stamp Studio — Design System Showcase' }),
-    ).toBeVisible();
-
-    // Test Toast
-    await page.getByRole('button', { name: 'Trigger Toast' }).click();
-    await expect(page.getByText('Design System Ready')).toBeVisible();
-
-    // Test Dialog
-    await page.getByRole('button', { name: 'Open Dialog' }).click();
-    const dlg = page.locator('dialog[open]');
-    await expect(dlg).toBeVisible();
-    await dlg.getByRole('button', { name: 'Close', exact: true }).click();
-    await expect(dlg).not.toBeVisible();
-
-    // Test AlertDialog
-    await page.getByRole('button', { name: 'Open AlertDialog' }).click();
-    const alertDlg = page.locator('dialog[open]');
-    await expect(alertDlg).toBeVisible();
-    await alertDlg.getByRole('button', { name: 'Cancel' }).click();
-    await expect(alertDlg).not.toBeVisible();
-
-    // Test Sheet
-    await page.getByRole('button', { name: 'Open Sheet' }).click();
-    const sheetDlg = page.locator('dialog[open]');
-    await expect(sheetDlg).toBeVisible();
-    await sheetDlg.getByRole('button', { name: 'Close panel' }).click();
-    await expect(sheetDlg).not.toBeVisible();
-  });
-
   test('automatically strips opaque paper background from JPEG/PNG signature & stamp assets and trims margins', async ({
     page,
   }) => {

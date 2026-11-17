@@ -12,6 +12,7 @@ import sys
 import json
 import base64
 import socket
+import shutil
 import tempfile
 import threading
 import subprocess
@@ -119,6 +120,39 @@ def write_excel_profiles(payload: dict) -> str:
     os.replace(tmp_path, ini_path)
     return ini_path
 
+OFFICE_CONVERT_PS1 = r"""
+param([string]$InPath, [string]$OutPath, [string]$Kind)
+$ErrorActionPreference = 'Stop'
+$app = $null
+try {
+    if ($Kind -eq 'word') {
+        $app = New-Object -ComObject Word.Application
+        $app.Visible = $false
+        $app.DisplayAlerts = 0
+        $app.AutomationSecurity = 3
+        $doc = $app.Documents.Open($InPath, $false, $true, $false)
+        $doc.ExportAsFixedFormat($OutPath, 17)
+        $doc.Close($false)
+    } else {
+        $app = New-Object -ComObject Excel.Application
+        $app.Visible = $false
+        $app.DisplayAlerts = $false
+        $app.AutomationSecurity = 3
+        $wb = $app.Workbooks.Open($InPath, 0, $true)
+        $wb.ExportAsFixedFormat(0, $OutPath)
+        $wb.Close($false)
+    }
+} catch {
+    [Console]::Error.WriteLine($_.Exception.Message)
+    exit 1
+} finally {
+    if ($app) {
+        try { $app.Quit() } catch {}
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($app) | Out-Null
+    }
+}
+"""
+
 class QuietHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=get_dist_dir(), **kwargs)
@@ -142,55 +176,51 @@ def start_server(port: int) -> ThreadingHTTPServer:
 class DesktopApi:
     """JavaScript bridge API для взаимодействия с Windows и Microsoft Excel."""
 
-    def convertExcelToPdf(self, b64_data: str, file_name: str) -> str:
-        """Конвертирует файл Excel (.xlsx/.xls) в PDF через установленный Microsoft Excel."""
+    def convertOfficeToPdf(self, b64_data: str, file_name: str) -> str:
+        """Превращает Word (.doc/.docx) или Excel (.xls/.xlsx/.xlsm) в PDF через установленный Microsoft Office."""
+        ext = os.path.splitext(file_name)[1].lower()
+        if ext in ('.doc', '.docx'):
+            kind = 'word'
+        elif ext in ('.xls', '.xlsx', '.xlsm'):
+            kind = 'excel'
+        else:
+            raise RuntimeError(f"Неподдерживаемый тип файла: {ext or file_name}")
+
+        work_dir = tempfile.mkdtemp(prefix='pss_')
         try:
-            raw_bytes = base64.b64decode(b64_data)
-            with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp_in:
-                tmp_in.write(raw_bytes)
-                tmp_in_path = tmp_in.name
+            in_path = os.path.join(work_dir, 'input' + ext)
+            out_path = os.path.join(work_dir, 'output.pdf')
+            script_path = os.path.join(work_dir, 'convert.ps1')
+            with open(in_path, 'wb') as f:
+                f.write(base64.b64decode(b64_data))
+            with open(script_path, 'w', encoding='utf-8-sig') as f:
+                f.write(OFFICE_CONVERT_PS1)
 
-            tmp_out_path = tmp_in_path.replace('.xlsx', '.pdf')
-
-            # PowerShell скрипт автоматизации Excel COM
-            ps_script = f"""
-            $excel = New-Object -ComObject Excel.Application
-            $excel.Visible = $false
-            $excel.DisplayAlerts = $false
-            try {{
-                $wb = $excel.Workbooks.Open('{tmp_in_path}')
-                $wb.ExportAsFixedFormat(0, '{tmp_out_path}', 0, $true, $false)
-                $wb.Close($false)
-            }} finally {{
-                $excel.Quit()
-                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
-            }}
-            """
-
-            res = subprocess.run(
-                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-                capture_output=True,
-                text=True,
-                check=False
-            )
-
-            if not os.path.exists(tmp_out_path) or os.path.getsize(tmp_out_path) == 0:
-                err_msg = res.stderr or res.stdout or "Не удалось запустить Microsoft Excel для экспорта."
-                raise RuntimeError(err_msg)
-
-            with open(tmp_out_path, 'rb') as f:
-                pdf_bytes = f.read()
-
+            kwargs = {}
+            if os.name == 'nt':
+                kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
             try:
-                os.remove(tmp_in_path)
-                os.remove(tmp_out_path)
-            except Exception:
-                pass
+                res = subprocess.run(
+                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path,
+                     "-InPath", in_path, "-OutPath", out_path, "-Kind", kind],
+                    capture_output=True, text=True, check=False, timeout=240, **kwargs
+                )
+            except subprocess.TimeoutExpired:
+                raise RuntimeError("Office не ответил за 4 минуты. Закройте окна Word/Excel и повторите.")
 
-            return base64.b64encode(pdf_bytes).decode('utf-8')
+            if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+                app = 'Microsoft Word' if kind == 'word' else 'Microsoft Excel'
+                detail = (res.stderr or res.stdout or '').strip()
+                raise RuntimeError(f"Не удалось открыть файл в {app}. {detail}".strip())
 
-        except Exception as e:
-            raise RuntimeError(f"Ошибка конвертации Excel: {e}")
+            with open(out_path, 'rb') as f:
+                return base64.b64encode(f.read()).decode('utf-8')
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+    def convertExcelToPdf(self, b64_data: str, file_name: str) -> str:
+        """Совместимость со старым именем."""
+        return self.convertOfficeToPdf(b64_data, file_name)
 
     def syncProfiles(self, payload: dict) -> dict:
         """Пишет подписи, печати и config.ini в %APPDATA%\\PdfStampStudio для кнопки в Excel."""

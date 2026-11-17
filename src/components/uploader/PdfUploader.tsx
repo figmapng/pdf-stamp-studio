@@ -40,6 +40,8 @@ interface PdfUploaderProps {
   t: Translations;
 }
 
+const OFFICE_FILE_RE = /\.(docx?|xlsx?|xlsm)$/i;
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -113,24 +115,32 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
         continue;
       }
 
-      const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
+      const isOffice = OFFICE_FILE_RE.test(file.name);
       let bytes: Uint8Array;
       let targetName = uniqueName;
 
-      if (isExcel) {
-        const pyApi = (window as unknown as { pywebview?: { api?: { convertExcelToPdf?: (b64: string, name: string) => Promise<string> } } }).pywebview?.api;
-        if (pyApi?.convertExcelToPdf) {
-          try {
-            const b64 = await fileToBase64(file);
-            const convertedB64 = await pyApi.convertExcelToPdf(b64, file.name);
-            bytes = base64ToUint8Array(convertedB64);
-            targetName = uniqueName.replace(/\.xlsx?$/i, '.pdf');
-          } catch (e) {
-            setUploadWarning(`Ошибка конвертации Excel в PDF: ${e instanceof Error ? e.message : String(e)}`);
-            continue;
+      if (isOffice) {
+        // Word / Excel are turned into PDF by Microsoft Office on this PC (Windows app only).
+        const pyApi = (
+          window as unknown as {
+            pywebview?: {
+              api?: { convertOfficeToPdf?: (b64: string, name: string) => Promise<string> };
+            };
           }
-        } else {
-          setUploadWarning(`Файлы Excel (.xlsx) автоматически конвертируются в приложении Windows. Для работы в браузере сохраните файл в Excel через 'Файл ➔ Экспорт в PDF'.`);
+        ).pywebview?.api;
+        if (!pyApi?.convertOfficeToPdf) {
+          setUploadWarning(t.upload.officeNeedsDesktop);
+          continue;
+        }
+        try {
+          const b64 = await fileToBase64(file);
+          const convertedB64 = await pyApi.convertOfficeToPdf(b64, file.name);
+          bytes = base64ToUint8Array(convertedB64);
+          targetName = uniqueName.replace(OFFICE_FILE_RE, '.pdf');
+        } catch (e) {
+          setUploadWarning(
+            `${t.upload.officeConvertError}: ${e instanceof Error ? e.message : String(e)}`,
+          );
           continue;
         }
       } else {
@@ -188,7 +198,7 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
 
         <CardContent className="space-y-3 p-4">
           <FileUploader
-            accept=".pdf,application/pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            accept=".pdf,application/pdf,.doc,.docx,.xls,.xlsx,.xlsm,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             multiple
             label={t.upload.dropzoneLabel}
             buttonLabel={t.upload.selectPdfBtn}

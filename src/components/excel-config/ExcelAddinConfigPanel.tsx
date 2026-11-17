@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, FileSpreadsheet, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Trash2 } from 'lucide-react';
 import type { AppLanguage } from '../../types';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '../ui';
 import { getDesktopApi, type ExcelStatus } from '../../lib/desktopSync';
@@ -32,6 +32,7 @@ const TEXT = {
     browserOnly:
       'Установка кнопки доступна в программе для Windows. В браузере можно подготовить подписи и печати для PDF.',
     needExcel: 'Для работы нужен установленный Microsoft Excel (2010 и новее).',
+    download: 'Скачать программу для Windows',
   },
   kk: {
     title: 'Excel батырмасы',
@@ -56,6 +57,7 @@ const TEXT = {
     browserOnly:
       'Батырманы орнату Windows бағдарламасында қолжетімді. Браузерде PDF үшін қолтаңба мен мөрді дайындауға болады.',
     needExcel: 'Microsoft Excel (2010 және одан жаңа) орнатылған болуы керек.',
+    download: 'Windows бағдарламасын жүктеу',
   },
 } as const;
 
@@ -160,7 +162,19 @@ export const ExcelAddinConfigPanel: React.FC<Props> = ({ language }) => {
               <p className="text-xs text-[var(--color-text-muted)]">{t.needExcel}</p>
             </>
           ) : (
-            <p className="text-sm text-[var(--color-text-secondary)]">{t.browserOnly}</p>
+            <>
+              <p className="text-sm text-[var(--color-text-secondary)]">{t.browserOnly}</p>
+              <div>
+                <a
+                  href="/download/PdfStampSetup.exe"
+                  download="PdfStampSetup.exe"
+                  className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-primary)] px-4 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  {t.download}
+                </a>
+              </div>
+            </>
           )}
 
           {message && (

@@ -3,12 +3,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Download,
   FileSpreadsheet,
-  FolderArchive,
-  Layers,
   Lock,
-  MoreHorizontal,
   Play,
   Settings,
   Stamp,
@@ -47,10 +43,6 @@ import {
 } from '../store/preferencesDb';
 import {
   Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   IconButton,
   Popover,
   PopoverContent,
@@ -70,8 +62,6 @@ import {
 } from '../components/review-center/ManualReviewCenter';
 import { ExportPanel } from '../components/export-panel/ExportPanel';
 import { SettingsPanel } from '../components/settings/SettingsPanel';
-import { DesignSystemShowcase } from '../components/showcase/DesignSystemShowcase';
-import { ExcelInstallModal } from '../components/modals/ExcelInstallModal';
 import { ExcelAddinConfigPanel } from '../components/excel-config/ExcelAddinConfigPanel';
 
 type ActiveTab =
@@ -80,8 +70,7 @@ type ActiveTab =
   | 'profiles'
   | 'review'
   | 'export'
-  | 'settings'
-  | 'design-system';
+  | 'settings';
 
 const DEFAULT_OCR_CONFIG: OcrConfig = {
   languages: ['kaz', 'rus', 'eng'],
@@ -182,8 +171,7 @@ async function loadDefaultEcologyProfiles(): Promise<{ signers: SignerConfig[]; 
 
 export const App: React.FC = () => {
   const [language, setLanguage] = useState<AppLanguage>('ru');
-  const [activeTab, setActiveTab] = useState<ActiveTab>('excel');
-  const [excelModalOpen, setExcelModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('upload');
 
   const [files, setFiles] = useState<UploadedPdfFile[]>([]);
   const [signers, setSigners] = useState<SignerConfig[]>([]);
@@ -209,11 +197,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.lang = language;
     const tabTitle =
-      activeTab === 'excel'
-        ? (language === 'ru' ? 'Надстройка Excel' : 'Excel баптауы')
-        : activeTab === 'design-system'
-          ? 'Design System'
-          : t.nav[activeTab];
+      activeTab === 'excel' ? 'Excel' : t.nav[activeTab];
     document.title = `${t.app.title} — ${tabTitle}`;
   }, [language, activeTab, t]);
 
@@ -736,7 +720,6 @@ export const App: React.FC = () => {
   };
 
   const navTabs: Array<{ id: ActiveTab; label: string }> = [
-    { id: 'excel', label: language === 'ru' ? '⚡ Надстройка Excel' : '⚡ Excel баптауы' },
     { id: 'upload', label: t.nav.upload },
     { id: 'profiles', label: t.nav.profiles },
     { id: 'review', label: t.nav.review },
@@ -744,7 +727,7 @@ export const App: React.FC = () => {
   ];
 
   const containerWidth =
-    activeTab === 'review' || activeTab === 'design-system'
+    activeTab === 'review'
       ? 'max-w-[1380px]'
       : activeTab === 'profiles' || activeTab === 'excel'
         ? 'max-w-6xl'
@@ -777,17 +760,6 @@ export const App: React.FC = () => {
               </div>
 
               <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setActiveTab('excel')}
-                  className="hidden sm:inline-flex h-8 items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs"
-                >
-                  <FileSpreadsheet className="h-3.5 w-3.5" strokeWidth={2} />
-                  {language === 'ru' ? '⚡ Настройка Excel' : '⚡ Excel баптауы'}
-                </Button>
-
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
@@ -829,6 +801,19 @@ export const App: React.FC = () => {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
+                      variant={activeTab === 'excel' ? 'primary' : 'ghost'}
+                      size="sm"
+                      aria-label="Excel"
+                      icon={<FileSpreadsheet className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
+                      onClick={() => setActiveTab('excel')}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>Excel</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <IconButton
                       variant={activeTab === 'settings' ? 'primary' : 'ghost'}
                       size="sm"
                       aria-label={t.nav.settings}
@@ -839,50 +824,6 @@ export const App: React.FC = () => {
                   <TooltipContent>{t.nav.settings}</TooltipContent>
                 </Tooltip>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <IconButton
-                      variant="ghost"
-                      size="sm"
-                      aria-label={t.app.moreOptions}
-                      icon={<MoreHorizontal className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />}
-                    />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setExcelModalOpen(true)}>
-                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" strokeWidth={1.75} aria-hidden="true" />
-                      {language === 'ru' ? '⚡ Установить кнопку в Excel' : '⚡ Excel-ге батырма орнату'}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <a
-                        href="/download/Excel_Addin_Installer.zip"
-                        download="Excel_Addin_Installer.zip"
-                        className="flex w-full items-center gap-2 text-xs font-medium text-emerald-600"
-                      >
-                        <FolderArchive className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                        {language === 'ru' ? 'Установщик Excel (.zip, 300 КБ)' : 'Excel орнатқышы (.zip)'}
-                      </a>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <a
-                        href="/download/PdfStampSetup.exe"
-                        download="PdfStampSetup.exe"
-                        className="flex w-full items-center gap-2 text-xs font-medium text-[var(--color-primary)]"
-                      >
-                        <Download className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                        {language === 'ru' ? 'Программа для Windows (.exe)' : 'Windows бағдарламасы (.exe)'}
-                      </a>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setActiveTab('settings')}>
-                      <Settings className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                      {t.nav.settings}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setActiveTab('design-system')}>
-                      <Layers className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                      {t.nav.designSystem}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
 
@@ -893,8 +834,8 @@ export const App: React.FC = () => {
               >
                 {navTabs.map((tab, idx) => {
                   const isCurrent = activeTab === tab.id;
-                  const isCompleted = activeStepIndex > idx && tab.id !== 'excel';
-                  const isLocked = tab.id !== 'excel' && tab.id !== 'upload' && !hasValidPdf;
+                  const isCompleted = activeStepIndex > idx;
+                  const isLocked = tab.id !== 'upload' && !hasValidPdf;
                   const shortTitle = tab.label.replace(/^\d+\.\s*/, '');
 
                   return (
@@ -917,12 +858,10 @@ export const App: React.FC = () => {
                                 : 'border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] text-[var(--color-text-muted)] group-hover:text-[var(--color-text-primary)]'
                           }`}
                         >
-                          {tab.id === 'excel' ? (
-                            <FileSpreadsheet className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                          ) : isCompleted ? (
+                          {isCompleted ? (
                             <Check className="h-3 w-3 sm:h-3.5 sm:w-3.5" strokeWidth={2.25} />
                           ) : (
-                            idx
+                            idx + 1
                           )}
                         </span>
                         <span
@@ -956,7 +895,6 @@ export const App: React.FC = () => {
           {/* Main Content */}
           <main id="main-content" tabIndex={-1} className={`mx-auto w-full ${containerWidth} flex-1 space-y-4 px-3 py-3 sm:px-5 sm:py-4`}>
           {activeTab === 'excel' && <ExcelAddinConfigPanel language={language} />}
-          {activeTab === 'design-system' && <DesignSystemShowcase />}
 
           {activeTab === 'upload' && (
           <PdfUploader
@@ -1105,12 +1043,6 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
-      <ExcelInstallModal
-        open={excelModalOpen}
-        onOpenChange={setExcelModalOpen}
-        t={t}
-        language={language}
-      />
     </div>
     </TooltipProvider>
     </ToastProvider>
