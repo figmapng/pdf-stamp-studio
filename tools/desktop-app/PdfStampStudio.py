@@ -127,32 +127,86 @@ def write_excel_profiles(payload: dict) -> str:
 OFFICE_CONVERT_PS1 = r"""
 param([string]$InPath, [string]$OutPath, [string]$Kind)
 $ErrorActionPreference = 'Stop'
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+# Office often answers "busy" (RPC_E_CALL_REJECTED 0x80010001 / RETRYLATER 0x8001010A) while it starts up
+# or shows a dialog. That is temporary: wait and retry instead of failing.
+function Invoke-Retry([scriptblock]$Action, [int]$Tries = 40, [int]$DelayMs = 750) {
+    for ($i = 1; $i -le $Tries; $i++) {
+        try { return (& $Action) }
+        catch {
+            $msg = $_.Exception.Message
+            $busy = ($msg -match '0x80010001|0x8001010A|RPC_E_CALL_REJECTED|RPC_E_SERVERCALL_RETRYLATER')
+            if ($busy -and $i -lt $Tries) { Start-Sleep -Milliseconds $DelayMs; continue }
+            throw
+        }
+    }
+}
+
+# Real Word/Excel only (WPS Office can answer to the same ProgIDs).
+function Test-Real($app, [string]$title, [string]$exePattern) {
+    try {
+        if ($null -eq $app) { return $false }
+        if ($app.Name -ne $title) { return $false }
+        $exe = [string]$app.FullName
+        if ($exe -ne '') { return ($exe -match $exePattern) }
+        return $true
+    } catch { return $false }
+}
+
+function Get-OfficeApp([string]$progId, [string]$clsid, [string]$title, [string]$exePattern) {
+    try {
+        $type = [Type]::GetTypeFromCLSID([Guid]$clsid)
+        $app = [Activator]::CreateInstance($type)
+        if (Test-Real $app $title $exePattern) { return @{ App = $app; Own = $true } }
+        try { $app.Quit() } catch {}
+    } catch {}
+    try {
+        $app = New-Object -ComObject $progId
+        if (Test-Real $app $title $exePattern) { return @{ App = $app; Own = $true } }
+        try { $app.Quit() } catch {}
+    } catch {}
+    try {
+        $app = [System.Runtime.InteropServices.Marshal]::GetActiveObject($progId)
+        if (Test-Real $app $title $exePattern) { return @{ App = $app; Own = $false } }
+    } catch {}
+    return $null
+}
+
 $app = $null
+$own = $true
 try {
     if ($Kind -eq 'word') {
-        $app = New-Object -ComObject Word.Application
-        $app.Visible = $false
-        $app.DisplayAlerts = 0
-        $app.AutomationSecurity = 3
-        $doc = $app.Documents.Open($InPath, $false, $true, $false)
-        $doc.ExportAsFixedFormat($OutPath, 17)
-        $doc.Close($false)
+        $found = Get-OfficeApp 'Word.Application' '000209FF-0000-0000-C000-000000000046' 'Microsoft Word' '(?i)\\winword\.exe$'
+        if ($null -eq $found) { throw 'Microsoft Word не найден (возможно, его подменяет другая программа, например WPS Office).' }
+        $app = $found.App; $own = $found.Own
+        if ($own) {
+            Invoke-Retry { $app.Visible = $false } | Out-Null
+            Invoke-Retry { $app.DisplayAlerts = 0 } | Out-Null
+        }
+        Invoke-Retry { $null = $app.Documents.Count } | Out-Null
+        $doc = Invoke-Retry { $app.Documents.Open($InPath, $false, $true, $false) }
+        Invoke-Retry { $doc.ExportAsFixedFormat($OutPath, 17) } | Out-Null
+        Invoke-Retry { $doc.Close($false) } | Out-Null
     } else {
-        $app = New-Object -ComObject Excel.Application
-        $app.Visible = $false
-        $app.DisplayAlerts = $false
-        $app.AutomationSecurity = 3
-        $wb = $app.Workbooks.Open($InPath, 0, $true)
-        $wb.ExportAsFixedFormat(0, $OutPath)
-        $wb.Close($false)
+        $found = Get-OfficeApp 'Excel.Application' '00024500-0000-0000-C000-000000000046' 'Microsoft Excel' '(?i)\\excel\.exe$'
+        if ($null -eq $found) { throw 'Microsoft Excel не найден (возможно, его подменяет другая программа, например WPS Office).' }
+        $app = $found.App; $own = $found.Own
+        if ($own) {
+            Invoke-Retry { $app.Visible = $false } | Out-Null
+            Invoke-Retry { $app.DisplayAlerts = $false } | Out-Null
+        }
+        $wb = Invoke-Retry { $app.Workbooks.Open($InPath, 0, $true) }
+        Invoke-Retry { $wb.ExportAsFixedFormat(0, $OutPath) } | Out-Null
+        Invoke-Retry { $wb.Close($false) } | Out-Null
     }
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)
     exit 1
 } finally {
     if ($app) {
-        try { $app.Quit() } catch {}
-        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($app) | Out-Null
+        if ($own) { try { $app.Quit() } catch {} }
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($app) | Out-Null } catch {}
     }
 }
 """
@@ -229,7 +283,7 @@ class DesktopApi:
                 res = subprocess.run(
                     ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path,
                      "-InPath", in_path, "-OutPath", out_path, "-Kind", kind],
-                    capture_output=True, text=True, check=False, timeout=240, **kwargs
+                    capture_output=True, encoding='utf-8', errors='replace', check=False, timeout=240, **kwargs
                 )
             except subprocess.TimeoutExpired:
                 raise RuntimeError("Office не ответил за 4 минуты. Закройте окна Word/Excel и повторите.")
@@ -237,6 +291,8 @@ class DesktopApi:
             if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
                 app = 'Microsoft Word' if kind == 'word' else 'Microsoft Excel'
                 detail = (res.stderr or res.stdout or '').strip()
+                if '0x80010001' in detail or 'RPC_E_CALL_REJECTED' in detail:
+                    detail = f"{app} занят. Закройте окна и диалоги Word/Excel и повторите. ({detail})"
                 raise RuntimeError(f"Не удалось открыть файл в {app}. {detail}".strip())
 
             with open(out_path, 'rb') as f:
