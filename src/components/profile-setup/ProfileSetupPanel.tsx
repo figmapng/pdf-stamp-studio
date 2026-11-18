@@ -97,14 +97,24 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
           >
             <UserCheck className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
           </span>
-          <CardTitle className="truncate text-sm">{displayTitle}</CardTitle>
+          <div className="min-w-0">
+            <CardTitle className="truncate text-sm">{displayTitle}</CardTitle>
+            <p
+              className={cn(
+                'text-[10px] font-semibold leading-tight',
+                isActive ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]',
+              )}
+            >
+              {isActive ? t.profiles.activeOn : t.profiles.activeOff}
+            </p>
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
           <Switch
             checked={isActive}
             onCheckedChange={(next) => updateProfile({ enabled: next })}
-            label={isActive ? t.profiles.activeOn : t.profiles.activeOff}
+            ariaLabel={`${t.profiles.activeOn}: ${displayTitle}`}
           />
           <IconButton
             variant="ghost"
@@ -122,7 +132,7 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
       </CardHeader>
 
       <CardContent
-        className={cn('flex flex-1 flex-col justify-between gap-3 p-4', !isActive && 'opacity-60')}
+        className={cn('flex flex-1 flex-col gap-2.5 p-3', !isActive && 'opacity-60')}
       >
         {!isActive && (
           <p className="rounded-[var(--radius-sm)] bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-warning)]">
@@ -370,7 +380,10 @@ export const ProfileSetupPanel: React.FC<ProfileSetupPanelProps> = ({
           </CardContent>
         </Card>
       ) : (
-        <div ref={listGridRef} className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div
+          ref={listGridRef}
+          className="grid grid-cols-1 gap-3 min-[640px]:grid-cols-2 min-[880px]:grid-cols-3"
+        >
           {signers.map((signer, index) => (
             <SignerFormCard
               key={signer.id}

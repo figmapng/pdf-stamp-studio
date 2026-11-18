@@ -9,6 +9,8 @@ export interface SwitchProps {
   id?: string;
   disabled?: boolean;
   className?: string;
+  /** accessible name when no visible label is shown */
+  ariaLabel?: string;
 }
 
 export const Switch: React.FC<SwitchProps> = ({
@@ -18,6 +20,7 @@ export const Switch: React.FC<SwitchProps> = ({
   id,
   disabled = false,
   className,
+  ariaLabel,
 }) => {
   const autoId = React.useId();
   const switchId = id ?? autoId;
@@ -25,6 +28,7 @@ export const Switch: React.FC<SwitchProps> = ({
   const toggle = (
     <SwitchPrimitive.Root
       id={switchId}
+      aria-label={ariaLabel}
       checked={checked}
       disabled={disabled}
       onCheckedChange={onCheckedChange}

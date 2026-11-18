@@ -324,6 +324,82 @@ function Get-ProcIds([string]$procName) {
 
 $script:apps = @{}
 
+# --- default printer guard ---------------------------------------------------------------------
+# Word/Excel ask the default printer for page metrics before exporting a PDF. When that printer is a
+# network printer that is not reachable, Windows shows "Waiting for printer connection" and Office
+# stalls for 1-3 minutes. While converting, a local virtual printer is made the default and the
+# user's printer is restored right after (also after a crash, from printer_backup.txt).
+$winKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows'
+$devKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Devices'
+$script:backupFile = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'printer_backup.txt'
+$script:printerBackup = $null
+
+function Get-DefaultPrinterInfo {
+    try {
+        $dev = (Get-ItemProperty -Path $winKey -Name Device -ErrorAction Stop).Device
+        if (-not $dev) { return $null }
+        $parts = $dev.Split(',')
+        $port = ''
+        if ($parts.Count -ge 3) { $port = $parts[2] }
+        return @{ Name = $parts[0]; Port = $port }
+    } catch { return $null }
+}
+
+function Test-PrinterRisky($info) {
+    if ($null -eq $info) { return $false }
+    return (($info.Name -like '\\*') -or ($info.Port -match '^(Ne\d+:|IP_|WSD|http)'))
+}
+
+function Find-SafePrinterName {
+    try {
+        $names = (Get-Item -Path $devKey -ErrorAction Stop).Property
+        foreach ($n in @('Microsoft Print to PDF', 'Microsoft XPS Document Writer')) {
+            if ($names -contains $n) { return $n }
+        }
+    } catch {}
+    return $null
+}
+
+function Restore-Printer {
+    $b = $script:printerBackup
+    $script:printerBackup = $null
+    if ($null -eq $b) { return }
+    try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($b.Name) } catch {}
+    try {
+        if ($null -ne $b.Mode -and "$($b.Mode)" -ne '') {
+            Set-ItemProperty -Path $winKey -Name LegacyDefaultPrinterMode -Value ([int]$b.Mode) -Type DWord
+        }
+    } catch {}
+    try { Remove-Item $script:backupFile -Force -ErrorAction SilentlyContinue } catch {}
+}
+
+function Enter-SafePrinter {
+    if ($null -ne $script:printerBackup) { return }
+    $info = Get-DefaultPrinterInfo
+    if (-not (Test-PrinterRisky $info)) { return }
+    $safe = Find-SafePrinterName
+    if ($null -eq $safe) { return }
+    $mode = $null
+    try { $mode = (Get-ItemProperty -Path $winKey -Name LegacyDefaultPrinterMode -ErrorAction Stop).LegacyDefaultPrinterMode } catch {}
+    $script:printerBackup = @{ Name = $info.Name; Mode = $mode }
+    try { Set-Content -Path $script:backupFile -Value @($info.Name, "$mode") -Encoding UTF8 } catch {}
+    try { (New-Object -ComObject WScript.Network).SetDefaultPrinter($safe) } catch { Restore-Printer }
+}
+
+# a previous helper may have died while the safe printer was active: put the user's printer back
+function Restore-FromFile {
+    try {
+        if (-not (Test-Path $script:backupFile)) { return }
+        $lines = @(Get-Content -Path $script:backupFile -Encoding UTF8)
+        if ($lines.Count -ge 1 -and $lines[0]) {
+            $mode = $null
+            if ($lines.Count -ge 2 -and $lines[1]) { $mode = $lines[1] }
+            $script:printerBackup = @{ Name = $lines[0]; Mode = $mode }
+            Restore-Printer
+        }
+    } catch {}
+}
+
 function Close-App([string]$kind) {
     $entry = $script:apps[$kind]
     $script:apps.Remove($kind)
@@ -385,7 +461,13 @@ function Convert-With([string]$kind, [string]$inPath, [string]$outPath, [bool]$v
     if ($kind -eq 'word') {
         $doc = Invoke-Retry { $app.Documents.Open($inPath, $false, $true, $false) } $tries $delayMs
         try {
-            Invoke-Retry { $doc.ExportAsFixedFormat($outPath, 17) } $tries $delayMs | Out-Null
+            # print-quality PDF without bookmarks / structure tags / document properties (faster)
+            try {
+                Invoke-Retry { $doc.ExportAsFixedFormat($outPath, 17, $false, 0, 0, 1, 1, 0, $false, $false, 0, $false, $false, $false) } $tries $delayMs | Out-Null
+            } catch {
+                if (Test-Busy $_.Exception.Message) { throw }
+                Invoke-Retry { $doc.ExportAsFixedFormat($outPath, 17) } $tries $delayMs | Out-Null
+            }
         } finally {
             try { $doc.Close($false) } catch {}
         }
@@ -404,15 +486,20 @@ function Convert-With([string]$kind, [string]$inPath, [string]$outPath, [bool]$v
 }
 
 function Convert-File([string]$kind, [string]$inPath, [string]$outPath) {
+    Enter-SafePrinter
     try {
-        Convert-With $kind $inPath $outPath $false 12 700
-    } catch {
-        if (-not (Test-Busy $_.Exception.Message)) { Close-App $kind; throw }
-        # Office is most likely waiting on a dialog that is invisible in the hidden window
-        # (licence, sign-in, first run). Restart it VISIBLE so the user can click through it.
-        Close-App $kind
-        try { Convert-With $kind $inPath $outPath $true 150 1000 }
-        catch { Close-App $kind; throw }
+        try {
+            Convert-With $kind $inPath $outPath $false 12 700
+        } catch {
+            if (-not (Test-Busy $_.Exception.Message)) { Close-App $kind; throw }
+            # Office is most likely waiting on a dialog that is invisible in the hidden window
+            # (licence, sign-in, first run). Restart it VISIBLE so the user can click through it.
+            Close-App $kind
+            try { Convert-With $kind $inPath $outPath $true 150 1000 }
+            catch { Close-App $kind; throw }
+        }
+    } finally {
+        Restore-Printer
     }
 }
 
@@ -420,6 +507,8 @@ function Send([string]$text) {
     [Console]::Out.WriteLine($text)
     [Console]::Out.Flush()
 }
+
+Restore-FromFile
 
 try {
     while ($true) {
@@ -430,7 +519,9 @@ try {
         if ($cmd -eq 'QUIT') { break }
         try {
             if ($cmd -eq 'WARM') {
-                Get-App $parts[1] $false 12 700 | Out-Null
+                Enter-SafePrinter
+                try { Get-App $parts[1] $false 12 700 | Out-Null }
+                finally { Restore-Printer }
                 Send 'OK'
             } elseif ($cmd -eq 'CONVERT') {
                 Convert-File $parts[1] $parts[2] $parts[3]
@@ -444,6 +535,7 @@ try {
         }
     }
 } finally {
+    Restore-Printer
     Close-App 'word'
     Close-App 'excel'
 }

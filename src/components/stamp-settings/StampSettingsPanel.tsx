@@ -150,14 +150,24 @@ export const StampSettingsPanel: React.FC<StampSettingsPanelProps> = ({
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] text-[var(--color-danger)]">
             <Stamp className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
           </span>
-          <CardTitle className="text-sm">{cardTitle}</CardTitle>
+          <div className="min-w-0">
+            <CardTitle className="truncate text-sm">{cardTitle}</CardTitle>
+            <p
+              className={cn(
+                'text-[10px] font-semibold leading-tight',
+                isActive ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]',
+              )}
+            >
+              {isActive ? t.profiles.activeOn : t.profiles.activeOff}
+            </p>
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
           <Switch
             checked={isActive}
             onCheckedChange={(next) => onChange({ ...stamp, enabled: next })}
-            label={isActive ? t.profiles.activeOn : t.profiles.activeOff}
+            ariaLabel={`${t.profiles.activeOn}: ${cardTitle}`}
           />
           <IconButton
             variant="ghost"
@@ -175,7 +185,7 @@ export const StampSettingsPanel: React.FC<StampSettingsPanelProps> = ({
       </CardHeader>
 
       <CardContent
-        className={cn('flex flex-1 flex-col justify-between gap-3 p-4', !isActive && 'opacity-60')}
+        className={cn('flex flex-1 flex-col gap-2.5 p-3', !isActive && 'opacity-60')}
       >
         {!isActive && (
           <p className="rounded-[var(--radius-sm)] bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-warning)]">

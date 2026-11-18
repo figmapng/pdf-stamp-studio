@@ -46,6 +46,8 @@ interface ExportPanelProps {
   stamps: StampConfig[];
   onMarkCompleted: (documentId: string, output: StampedPdfOutput, objectUrl: string) => void;
   onMarkFailed: (documentId: string, error: string) => void;
+  /** clears the current documents and returns to the upload step (signatures/stamps stay) */
+  onStartOver: () => void;
   t: Translations;
 }
 
@@ -98,6 +100,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   stamps,
   onMarkCompleted,
   onMarkFailed,
+  onStartOver,
   t,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
@@ -105,6 +108,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [exportError, setExportError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [downloadedIds, setDownloadedIds] = useState<Set<string>>(() => new Set());
 
   const docList = useMemo(() => Object.values(results), [results]);
 
@@ -120,6 +124,16 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     () => docList.filter((d) => d.status === 'COMPLETED' && jobs[d.documentId]?.exportedUrl),
     [docList, jobs],
   );
+
+  const allDownloaded =
+    completedDocs.length > 0 && completedDocs.every((d) => downloadedIds.has(d.documentId));
+
+  const handleStartOver = () => {
+    if (completedDocs.length > 0 && !allDownloaded && !window.confirm(t.exportPanel.startOverConfirm)) {
+      return;
+    }
+    onStartOver();
+  };
 
   const blockedOrPendingDocs = useMemo(
     () =>
@@ -228,6 +242,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
         `pdf-stamp-studio-export-${Date.now()}.zip`,
       );
       if (path) setSavedNote(path);
+      setDownloadedIds(new Set(completedDocs.map((d) => d.documentId)));
     } catch (err) {
       setExportError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -279,8 +294,32 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             <Archive className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
             {t.exportPanel.downloadZipBtn} ({completedDocs.length})
           </Button>
+
+          {completedDocs.length > 0 && !allDownloaded && (
+            <Button variant="outline" size="sm" onClick={handleStartOver} className="w-full sm:w-auto">
+              {t.exportPanel.startOverBtn}
+            </Button>
+          )}
         </div>
       </div>
+
+      {allDownloaded && (
+        <div
+          role="status"
+          className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-emerald-200 bg-[var(--color-success-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="space-y-0.5">
+            <p className="flex items-center gap-2 text-sm font-bold text-[var(--color-success)]">
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              {t.exportPanel.allSavedTitle}
+            </p>
+            <p className="text-xs text-[var(--color-text-secondary)]">{t.exportPanel.allSavedHint}</p>
+          </div>
+          <Button size="md" onClick={handleStartOver}>
+            {t.exportPanel.startOverBtn}
+          </Button>
+        </div>
+      )}
 
       {isExporting && (
         <Card>
@@ -396,6 +435,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                               void triggerBrowserDownload(job.exportedUrl!, `stamped-${doc.fileName}`)
                                 .then((path) => {
                                   if (path) setSavedNote(path);
+                                  setDownloadedIds((prev) => new Set(prev).add(doc.documentId));
                                 })
                                 .catch((err: unknown) =>
                                   setExportError(err instanceof Error ? err.message : String(err)),

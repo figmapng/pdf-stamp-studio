@@ -1041,6 +1041,10 @@ export const App: React.FC = () => {
             stamps={activeStamps}
             onMarkCompleted={handleMarkCompleted}
             onMarkFailed={handleMarkFailed}
+            onStartOver={() => {
+              handleClearFiles();
+              setActiveTab('upload');
+            }}
             t={t}
           />
         )}
