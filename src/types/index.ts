@@ -101,6 +101,8 @@ export interface StampConfig {
   label: string;
   policy: StampPolicy;
   asset: PngAsset | null;
+  /** false = switched off: ignored in documents and in the Excel button (default: on) */
+  enabled?: boolean;
 }
 
 export interface PngAsset {

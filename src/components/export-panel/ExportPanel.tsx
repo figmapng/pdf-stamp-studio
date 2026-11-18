@@ -62,10 +62,10 @@ function blobToBase64(blob: Blob): Promise<string> {
  * Saves a file. In the Windows app the embedded browser cannot download by itself, so the app's
  * own "Save as" dialog is used; in a normal browser a regular download starts.
  */
-async function triggerBrowserDownload(urlOrBlob: string | Blob, fileName: string): Promise<void> {
+async function triggerBrowserDownload(urlOrBlob: string | Blob, fileName: string): Promise<string | null> {
   const desktopApi = (
     window as unknown as {
-      pywebview?: { api?: { saveFile?: (b64: string, name: string) => Promise<{ success: boolean; cancelled?: boolean; error?: string }> } };
+      pywebview?: { api?: { saveFile?: (b64: string, name: string) => Promise<{ success: boolean; cancelled?: boolean; error?: string; path?: string }> } };
     }
   ).pywebview?.api;
 
@@ -73,7 +73,7 @@ async function triggerBrowserDownload(urlOrBlob: string | Blob, fileName: string
     const blob = urlOrBlob instanceof Blob ? urlOrBlob : await (await fetch(urlOrBlob)).blob();
     const res = await desktopApi.saveFile(await blobToBase64(blob), fileName);
     if (!res.success && !res.cancelled) throw new Error(res.error || 'Save failed');
-    return;
+    return res.success ? (res.path ?? null) : null;
   }
 
   const isBlob = urlOrBlob instanceof Blob;
@@ -87,6 +87,7 @@ async function triggerBrowserDownload(urlOrBlob: string | Blob, fileName: string
   if (isBlob) {
     setTimeout(() => URL.revokeObjectURL(href), 2000);
   }
+  return null;
 }
 
 export const ExportPanel: React.FC<ExportPanelProps> = ({
@@ -102,6 +103,8 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const docList = useMemo(() => Object.values(results), [results]);
 
@@ -200,6 +203,7 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
 
   const handleDownloadZip = async () => {
     setExportError(null);
+    setSavedNote(null);
     const completedOutputs: StampedPdfOutput[] = [];
     for (const doc of completedDocs) {
       const job = jobs[doc.documentId];
@@ -218,12 +222,16 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
     const zipCopy = new Uint8Array(zipBytes.byteLength);
     zipCopy.set(zipBytes);
     try {
-      await triggerBrowserDownload(
+      setSaving(true);
+      const path = await triggerBrowserDownload(
         new Blob([zipCopy], { type: 'application/zip' }),
         `pdf-stamp-studio-export-${Date.now()}.zip`,
       );
+      if (path) setSavedNote(path);
     } catch (err) {
       setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -280,6 +288,28 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
             <Progress label={t.exportPanel.exportingLabel} value={exportProgress} max={100} />
           </CardContent>
         </Card>
+      )}
+
+      {saving && (
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-primary-subtle)] p-3 text-xs"
+        >
+          <span
+            aria-hidden="true"
+            className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent"
+          />
+          {t.exportPanel.savingLabel}
+        </div>
+      )}
+
+      {savedNote && !saving && (
+        <div
+          role="status"
+          className="rounded-[var(--radius-lg)] border border-emerald-200 bg-[var(--color-success-subtle)] p-3 text-xs font-medium text-[var(--color-success)]"
+        >
+          {t.exportPanel.savedTo}: {savedNote}
+        </div>
       )}
 
       {exportError && (
@@ -359,14 +389,19 @@ export const ExportPanel: React.FC<ExportPanelProps> = ({
                             variant="outline"
                             size="sm"
                             aria-label={t.exportPanel.downloadSingle}
-                            onClick={() =>
-                              void triggerBrowserDownload(
-                                job.exportedUrl!,
-                                `stamped-${doc.fileName}`,
-                              ).catch((err: unknown) =>
-                                setExportError(err instanceof Error ? err.message : String(err)),
-                              )
-                            }
+                            onClick={() => {
+                              setExportError(null);
+                              setSavedNote(null);
+                              setSaving(true);
+                              void triggerBrowserDownload(job.exportedUrl!, `stamped-${doc.fileName}`)
+                                .then((path) => {
+                                  if (path) setSavedNote(path);
+                                })
+                                .catch((err: unknown) =>
+                                  setExportError(err instanceof Error ? err.message : String(err)),
+                                )
+                                .finally(() => setSaving(false));
+                            }}
                           >
                             <Download className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
                             <span className="hidden sm:inline">{t.exportPanel.downloadSingle}</span>

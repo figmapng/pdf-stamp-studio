@@ -9,7 +9,7 @@ import type {
 } from '../../types';
 import type { Translations } from '../../i18n';
 import { cn } from '../../lib/cn';
-import { Card, CardContent, CardHeader, CardTitle, IconButton, Select } from '../ui';
+import { Card, CardContent, CardHeader, CardTitle, IconButton, Select, Switch } from '../ui';
 import { AssetManagerCard } from '../profile-setup/AssetManagerCard';
 
 interface StampSettingsPanelProps {
@@ -102,6 +102,8 @@ export const StampSettingsPanel: React.FC<StampSettingsPanelProps> = ({
   const { policy, asset } = stamp;
 
   const isManual = policy.owner === 'MANUAL_PER_DOCUMENT';
+  const isActive = stamp.enabled !== false;
+  const ownerSwitchedOff = signers.some((sg) => sg.id === policy.owner && sg.profile.enabled === false);
   const cardTitle = `${index + 1}. ${t.stamp.cardTitle}`;
   const currentAnchorPos: StampAnchorPosition =
     policy.anchorPosition ?? (policy.relation === 'BESIDE' ? 'BESIDE_LEFT' : 'AUTO');
@@ -140,31 +142,51 @@ export const StampSettingsPanel: React.FC<StampSettingsPanelProps> = ({
       className={cn(
         'flex h-full min-w-0 scroll-mt-24 flex-col transition-shadow duration-300',
         isHighlighted && 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30',
+        !isActive && 'bg-slate-50',
       )}
     >
-      <CardHeader className="px-4 py-2.5">
-        <div className="flex items-center gap-2">
+      <CardHeader className="flex-nowrap gap-2 px-4 py-2.5">
+        <div className={cn('flex min-w-0 flex-1 items-center gap-2', !isActive && 'opacity-60')}>
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-danger-subtle)] text-[var(--color-danger)]">
             <Stamp className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
           </span>
           <CardTitle className="text-sm">{cardTitle}</CardTitle>
         </div>
 
-        <IconButton
-          variant="ghost"
-          size="sm"
-          aria-label={`${t.profiles.removeCardBtn} ${cardTitle}`}
-          icon={
-            <Trash2
-              className="h-3.5 w-3.5 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"
-              strokeWidth={1.75}
-            />
-          }
-          onClick={onRemove}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          <Switch
+            checked={isActive}
+            onCheckedChange={(next) => onChange({ ...stamp, enabled: next })}
+            label={isActive ? t.profiles.activeOn : t.profiles.activeOff}
+          />
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label={`${t.profiles.removeCardBtn} ${cardTitle}`}
+            icon={
+              <Trash2
+                className="h-3.5 w-3.5 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"
+                strokeWidth={1.75}
+              />
+            }
+            onClick={onRemove}
+          />
+        </div>
       </CardHeader>
 
-      <CardContent className="flex flex-1 flex-col justify-between gap-3 p-4">
+      <CardContent
+        className={cn('flex flex-1 flex-col justify-between gap-3 p-4', !isActive && 'opacity-60')}
+      >
+        {!isActive && (
+          <p className="rounded-[var(--radius-sm)] bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-warning)]">
+            {t.profiles.inactiveNote}
+          </p>
+        )}
+        {isActive && ownerSwitchedOff && (
+          <p className="rounded-[var(--radius-sm)] bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-warning)]">
+            {t.profiles.ownerOffNote}
+          </p>
+        )}
         <div className="space-y-3">
           <div className="flex flex-col gap-1">
             <label

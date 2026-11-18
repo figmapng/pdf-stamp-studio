@@ -9,6 +9,7 @@ PDF Stamp Studio — Настольное приложение для Windows
 
 import os
 import sys
+import atexit
 import json
 import base64
 import socket
@@ -101,7 +102,7 @@ def write_excel_profiles(payload: dict) -> str:
         lines += [
             f"[Stamp{i}]",
             f"Id={_ini_text(st.get('id'))}",
-            "Enabled=1",
+            f"Enabled={1 if st.get('enabled', True) else 0}",
             f"Label={_ini_text(st.get('label'))}",
             f"Owner={_ini_text(st.get('owner'))}",
             f"Relation={_ini_text(st.get('relation'))}",
@@ -129,15 +130,17 @@ param([string]$InPath, [string]$OutPath, [string]$Kind)
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
-# Office often answers "busy" (RPC_E_CALL_REJECTED 0x80010001 / RETRYLATER 0x8001010A) while it starts up
-# or shows a dialog. That is temporary: wait and retry instead of failing.
-function Invoke-Retry([scriptblock]$Action, [int]$Tries = 40, [int]$DelayMs = 750) {
+# Office answers "busy" (RPC_E_CALL_REJECTED 0x80010001 / RETRYLATER 0x8001010A) while it starts up
+# or while a dialog (licence, sign-in, first run) waits for a click. Short waits are retried.
+function Test-Busy([string]$msg) {
+    return ($msg -match '0x80010001|0x8001010A|RPC_E_CALL_REJECTED|RPC_E_SERVERCALL_RETRYLATER')
+}
+
+function Invoke-Retry([scriptblock]$Action, [int]$Tries, [int]$DelayMs) {
     for ($i = 1; $i -le $Tries; $i++) {
         try { return (& $Action) }
         catch {
-            $msg = $_.Exception.Message
-            $busy = ($msg -match '0x80010001|0x8001010A|RPC_E_CALL_REJECTED|RPC_E_SERVERCALL_RETRYLATER')
-            if ($busy -and $i -lt $Tries) { Start-Sleep -Milliseconds $DelayMs; continue }
+            if ((Test-Busy $_.Exception.Message) -and $i -lt $Tries) { Start-Sleep -Milliseconds $DelayMs; continue }
             throw
         }
     }
@@ -173,41 +176,70 @@ function Get-OfficeApp([string]$progId, [string]$clsid, [string]$title, [string]
     return $null
 }
 
-$app = $null
-$own = $true
+function Get-ProcIds([string]$procName) {
+    return @(Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+}
+
+function Convert-Once([bool]$Visible, [int]$Tries, [int]$DelayMs) {
+    $procName = 'EXCEL'
+    if ($Kind -eq 'word') { $procName = 'WINWORD' }
+    $before = Get-ProcIds $procName
+    $app = $null
+    $own = $true
+    $ok = $false
+    try {
+        if ($Kind -eq 'word') {
+            $found = Get-OfficeApp 'Word.Application' '000209FF-0000-0000-C000-000000000046' 'Microsoft Word' '(?i)\\winword\.exe$'
+        } else {
+            $found = Get-OfficeApp 'Excel.Application' '00024500-0000-0000-C000-000000000046' 'Microsoft Excel' '(?i)\\excel\.exe$'
+        }
+        if ($null -eq $found) { throw 'Microsoft Office не найден (возможно, его подменяет другая программа, например WPS Office).' }
+        $app = $found.App
+        # no new process = we got the user's own, already running Office: never hide or close it
+        $own = $found.Own -and (@(Get-ProcIds $procName).Count -gt @($before).Count)
+
+        if ($own) {
+            Invoke-Retry { $app.Visible = $Visible } $Tries $DelayMs | Out-Null
+            if ($Kind -eq 'word') { Invoke-Retry { $app.DisplayAlerts = 0 } $Tries $DelayMs | Out-Null }
+            else { Invoke-Retry { $app.DisplayAlerts = $false } $Tries $DelayMs | Out-Null }
+        }
+
+        if ($Kind -eq 'word') {
+            Invoke-Retry { $null = $app.Documents.Count } $Tries $DelayMs | Out-Null
+            $doc = Invoke-Retry { $app.Documents.Open($InPath, $false, $true, $false) } $Tries $DelayMs
+            Invoke-Retry { $doc.ExportAsFixedFormat($OutPath, 17) } $Tries $DelayMs | Out-Null
+            Invoke-Retry { $doc.Close($false) } $Tries $DelayMs | Out-Null
+        } else {
+            $wb = Invoke-Retry { $app.Workbooks.Open($InPath, 0, $true) } $Tries $DelayMs
+            Invoke-Retry { $wb.ExportAsFixedFormat(0, $OutPath) } $Tries $DelayMs | Out-Null
+            Invoke-Retry { $wb.Close($false) } $Tries $DelayMs | Out-Null
+        }
+        $ok = $true
+    } finally {
+        if ($app -and $own) { try { $app.Quit() } catch {} }
+        if ($app) { try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($app) | Out-Null } catch {} }
+        if (-not $ok) {
+            # remove the stuck Office process WE started (never one the user already had)
+            Start-Sleep -Milliseconds 300
+            foreach ($id in (Get-ProcIds $procName)) {
+                if ($before -notcontains $id) { try { Stop-Process -Id $id -Force } catch {} }
+            }
+        }
+    }
+}
+
 try {
-    if ($Kind -eq 'word') {
-        $found = Get-OfficeApp 'Word.Application' '000209FF-0000-0000-C000-000000000046' 'Microsoft Word' '(?i)\\winword\.exe$'
-        if ($null -eq $found) { throw 'Microsoft Word не найден (возможно, его подменяет другая программа, например WPS Office).' }
-        $app = $found.App; $own = $found.Own
-        if ($own) {
-            Invoke-Retry { $app.Visible = $false } | Out-Null
-            Invoke-Retry { $app.DisplayAlerts = 0 } | Out-Null
-        }
-        Invoke-Retry { $null = $app.Documents.Count } | Out-Null
-        $doc = Invoke-Retry { $app.Documents.Open($InPath, $false, $true, $false) }
-        Invoke-Retry { $doc.ExportAsFixedFormat($OutPath, 17) } | Out-Null
-        Invoke-Retry { $doc.Close($false) } | Out-Null
-    } else {
-        $found = Get-OfficeApp 'Excel.Application' '00024500-0000-0000-C000-000000000046' 'Microsoft Excel' '(?i)\\excel\.exe$'
-        if ($null -eq $found) { throw 'Microsoft Excel не найден (возможно, его подменяет другая программа, например WPS Office).' }
-        $app = $found.App; $own = $found.Own
-        if ($own) {
-            Invoke-Retry { $app.Visible = $false } | Out-Null
-            Invoke-Retry { $app.DisplayAlerts = $false } | Out-Null
-        }
-        $wb = Invoke-Retry { $app.Workbooks.Open($InPath, 0, $true) }
-        Invoke-Retry { $wb.ExportAsFixedFormat(0, $OutPath) } | Out-Null
-        Invoke-Retry { $wb.Close($false) } | Out-Null
+    try {
+        Convert-Once $false 12 700
+    } catch {
+        if (-not (Test-Busy $_.Exception.Message)) { throw }
+        # Office is most likely waiting on a dialog that stays invisible in the hidden window
+        # (licence, sign-in, first run). Start it VISIBLE so the user can click through it.
+        Convert-Once $true 150 1000
     }
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)
     exit 1
-} finally {
-    if ($app) {
-        if ($own) { try { $app.Quit() } catch {} }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($app) | Out-Null } catch {}
-    }
 }
 """
 
@@ -233,6 +265,300 @@ def get_work_root() -> str:
             continue
     return tempfile.gettempdir()
 
+OFFICE_SERVER_PS1 = r"""
+$ErrorActionPreference = 'Stop'
+try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
+# Long-running helper: keeps ONE hidden Word and ONE hidden Excel alive, so only the first file pays the
+# start-up cost (10-30 s). Protocol (one line each way):
+#   CONVERT<TAB>kind<TAB>in<TAB>out   -> OK | ERR<TAB>message
+#   WARM<TAB>kind                     -> OK | ERR<TAB>message
+#   QUIT
+function Test-Busy([string]$msg) {
+    return ($msg -match '0x80010001|0x8001010A|RPC_E_CALL_REJECTED|RPC_E_SERVERCALL_RETRYLATER')
+}
+
+function Invoke-Retry([scriptblock]$Action, [int]$Tries, [int]$DelayMs) {
+    for ($i = 1; $i -le $Tries; $i++) {
+        try { return (& $Action) }
+        catch {
+            if ((Test-Busy $_.Exception.Message) -and $i -lt $Tries) { Start-Sleep -Milliseconds $DelayMs; continue }
+            throw
+        }
+    }
+}
+
+function Test-Real($app, [string]$title, [string]$exePattern) {
+    try {
+        if ($null -eq $app) { return $false }
+        if ($app.Name -ne $title) { return $false }
+        $exe = [string]$app.FullName
+        if ($exe -ne '') { return ($exe -match $exePattern) }
+        return $true
+    } catch { return $false }
+}
+
+function Get-OfficeApp([string]$progId, [string]$clsid, [string]$title, [string]$exePattern) {
+    try {
+        $type = [Type]::GetTypeFromCLSID([Guid]$clsid)
+        $app = [Activator]::CreateInstance($type)
+        if (Test-Real $app $title $exePattern) { return @{ App = $app; Own = $true } }
+        try { $app.Quit() } catch {}
+    } catch {}
+    try {
+        $app = New-Object -ComObject $progId
+        if (Test-Real $app $title $exePattern) { return @{ App = $app; Own = $true } }
+        try { $app.Quit() } catch {}
+    } catch {}
+    try {
+        $app = [System.Runtime.InteropServices.Marshal]::GetActiveObject($progId)
+        if (Test-Real $app $title $exePattern) { return @{ App = $app; Own = $false } }
+    } catch {}
+    return $null
+}
+
+function Get-ProcIds([string]$procName) {
+    return @(Get-Process -Name $procName -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+}
+
+$script:apps = @{}
+
+function Close-App([string]$kind) {
+    $entry = $script:apps[$kind]
+    $script:apps.Remove($kind)
+    if ($null -eq $entry) { return }
+    if ($entry.Own) { try { $entry.App.Quit() } catch {} }
+    try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($entry.App) | Out-Null } catch {}
+    if ($entry.Own) {
+        Start-Sleep -Milliseconds 300
+        foreach ($id in (Get-ProcIds $entry.ProcName)) {
+            if ($entry.Before -notcontains $id) { try { Stop-Process -Id $id -Force } catch {} }
+        }
+    }
+}
+
+function Get-App([string]$kind, [bool]$visible, [int]$tries, [int]$delayMs) {
+    $entry = $script:apps[$kind]
+    if ($entry) {
+        $alive = $true
+        try { $null = $entry.App.Name } catch { $alive = $false }
+        if ($alive -and ($entry.Visible -eq $visible -or -not $entry.Own)) { return $entry }
+        Close-App $kind
+    }
+
+    $procName = 'EXCEL'
+    if ($kind -eq 'word') { $procName = 'WINWORD' }
+    $before = Get-ProcIds $procName
+
+    if ($kind -eq 'word') {
+        $found = Get-OfficeApp 'Word.Application' '000209FF-0000-0000-C000-000000000046' 'Microsoft Word' '(?i)\\winword\.exe$'
+    } else {
+        $found = Get-OfficeApp 'Excel.Application' '00024500-0000-0000-C000-000000000046' 'Microsoft Excel' '(?i)\\excel\.exe$'
+    }
+    if ($null -eq $found) { throw 'Microsoft Office не найден (возможно, его подменяет другая программа, например WPS Office).' }
+
+    $app = $found.App
+    # no new process = this is the user's own, already running Office: never hide or close it
+    $own = $found.Own -and (@(Get-ProcIds $procName).Count -gt @($before).Count)
+    $entry = @{ App = $app; Own = $own; Visible = $visible; ProcName = $procName; Before = $before }
+    $script:apps[$kind] = $entry
+
+    try {
+        if ($own) {
+            Invoke-Retry { $app.Visible = $visible } $tries $delayMs | Out-Null
+            if ($kind -eq 'word') { Invoke-Retry { $app.DisplayAlerts = 0 } $tries $delayMs | Out-Null }
+            else { Invoke-Retry { $app.DisplayAlerts = $false } $tries $delayMs | Out-Null }
+        }
+        if ($kind -eq 'word') { Invoke-Retry { $null = $app.Documents.Count } $tries $delayMs | Out-Null }
+        else { Invoke-Retry { $null = $app.Workbooks.Count } $tries $delayMs | Out-Null }
+    } catch {
+        Close-App $kind
+        throw
+    }
+    return $entry
+}
+
+function Convert-With([string]$kind, [string]$inPath, [string]$outPath, [bool]$visible, [int]$tries, [int]$delayMs) {
+    $entry = Get-App $kind $visible $tries $delayMs
+    $app = $entry.App
+    if ($kind -eq 'word') {
+        $doc = Invoke-Retry { $app.Documents.Open($inPath, $false, $true, $false) } $tries $delayMs
+        try {
+            Invoke-Retry { $doc.ExportAsFixedFormat($outPath, 17) } $tries $delayMs | Out-Null
+        } finally {
+            try { $doc.Close($false) } catch {}
+        }
+    } else {
+        $wb = Invoke-Retry { $app.Workbooks.Open($inPath, 0, $true) } $tries $delayMs
+        try {
+            Invoke-Retry { $wb.ExportAsFixedFormat(0, $outPath) } $tries $delayMs | Out-Null
+        } finally {
+            try { $wb.Close($false) } catch {}
+        }
+    }
+    # a visible start-up was only needed to let the user click through a dialog: hide it again
+    if ($visible -and $entry.Own) {
+        try { $app.Visible = $false; $entry.Visible = $false } catch {}
+    }
+}
+
+function Convert-File([string]$kind, [string]$inPath, [string]$outPath) {
+    try {
+        Convert-With $kind $inPath $outPath $false 12 700
+    } catch {
+        if (-not (Test-Busy $_.Exception.Message)) { Close-App $kind; throw }
+        # Office is most likely waiting on a dialog that is invisible in the hidden window
+        # (licence, sign-in, first run). Restart it VISIBLE so the user can click through it.
+        Close-App $kind
+        try { Convert-With $kind $inPath $outPath $true 150 1000 }
+        catch { Close-App $kind; throw }
+    }
+}
+
+function Send([string]$text) {
+    [Console]::Out.WriteLine($text)
+    [Console]::Out.Flush()
+}
+
+try {
+    while ($true) {
+        $line = [Console]::In.ReadLine()
+        if ($null -eq $line) { break }
+        $parts = $line.Split("`t")
+        $cmd = $parts[0]
+        if ($cmd -eq 'QUIT') { break }
+        try {
+            if ($cmd -eq 'WARM') {
+                Get-App $parts[1] $false 12 700 | Out-Null
+                Send 'OK'
+            } elseif ($cmd -eq 'CONVERT') {
+                Convert-File $parts[1] $parts[2] $parts[3]
+                Send 'OK'
+            } else {
+                Send ("ERR`tunknown command")
+            }
+        } catch {
+            $m = ($_.Exception.Message -replace "[\r\n\t]+", ' ')
+            Send ("ERR`t" + $m)
+        }
+    }
+} finally {
+    Close-App 'word'
+    Close-App 'excel'
+}
+"""
+
+
+class OfficeServer:
+    """Keeps one PowerShell helper (with hidden Word/Excel inside) running between conversions."""
+
+    IDLE_SECONDS = 600
+
+    def __init__(self):
+        self._proc = None
+        self._lock = threading.Lock()
+        self._idle = None
+        self._script_path = None
+
+    # -- process handling ---------------------------------------------------
+    def _alive(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    def _start(self) -> None:
+        work = get_work_root()
+        os.makedirs(work, exist_ok=True)
+        self._script_path = os.path.join(work, 'office_server.ps1')
+        with open(self._script_path, 'w', encoding='utf-8-sig') as f:
+            f.write(OFFICE_SERVER_PS1)
+        kwargs = {}
+        if os.name == 'nt':
+            kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
+        self._proc = subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", self._script_path],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            encoding='utf-8', errors='replace', bufsize=1, **kwargs
+        )
+
+    def _kill(self) -> None:
+        proc, self._proc = self._proc, None
+        if proc is not None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    def _arm_idle_timer(self) -> None:
+        if self._idle is not None:
+            self._idle.cancel()
+        self._idle = threading.Timer(self.IDLE_SECONDS, self.shutdown)
+        self._idle.daemon = True
+        self._idle.start()
+
+    def shutdown(self) -> None:
+        """Asks the helper to close Word/Excel and exit."""
+        with self._lock:
+            if self._idle is not None:
+                self._idle.cancel()
+                self._idle = None
+            if self._alive():
+                try:
+                    self._proc.stdin.write("QUIT\n")
+                    self._proc.stdin.flush()
+                    self._proc.wait(timeout=8)
+                except Exception:
+                    self._kill()
+            self._proc = None
+
+    # -- requests -----------------------------------------------------------
+    def request(self, line: str, timeout: float):
+        """Returns (ok, text). Raises OfficeServerError when the helper itself is not usable."""
+        with self._lock:
+            if self._idle is not None:
+                self._idle.cancel()
+            try:
+                if not self._alive():
+                    self._start()
+                self._proc.stdin.write(line + "\n")
+                self._proc.stdin.flush()
+            except Exception as e:
+                self._kill()
+                raise OfficeServerError(str(e))
+
+            result = {}
+
+            def _read():
+                try:
+                    result['line'] = self._proc.stdout.readline()
+                except Exception as e:  # pipe closed
+                    result['error'] = str(e)
+
+            reader = threading.Thread(target=_read, daemon=True)
+            reader.start()
+            reader.join(timeout)
+            if reader.is_alive():
+                self._kill()
+                raise OfficeServerError("timeout")
+            reply = (result.get('line') or '').rstrip("\r\n")
+            if not reply:
+                self._kill()
+                raise OfficeServerError(result.get('error') or "helper stopped")
+            self._arm_idle_timer()
+            if reply == 'OK':
+                return True, ''
+            if reply.startswith("ERR\t"):
+                return False, reply[4:]
+            return False, reply
+
+
+class OfficeServerError(Exception):
+    pass
+
+
+OFFICE = OfficeServer()
+atexit.register(OFFICE.shutdown)
+
+
 class QuietHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=get_dist_dir(), **kwargs)
@@ -256,6 +582,24 @@ def start_server(port: int) -> ThreadingHTTPServer:
 class DesktopApi:
     """JavaScript bridge API для взаимодействия с Windows и Microsoft Excel."""
 
+    def _convert_one_shot(self, kind: str, in_path: str, out_path: str, work_dir: str) -> str:
+        """Запасной путь: отдельный запуск PowerShell на каждый файл (медленнее). Возвращает текст ошибки."""
+        script_path = os.path.join(work_dir, 'convert.ps1')
+        with open(script_path, 'w', encoding='utf-8-sig') as f:
+            f.write(OFFICE_CONVERT_PS1)
+        kwargs = {}
+        if os.name == 'nt':
+            kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
+        try:
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path,
+                 "-InPath", in_path, "-OutPath", out_path, "-Kind", kind],
+                capture_output=True, encoding='utf-8', errors='replace', check=False, timeout=240, **kwargs
+            )
+        except subprocess.TimeoutExpired:
+            return "Office не ответил за 4 минуты. Закройте окна Word/Excel и повторите."
+        return (res.stderr or res.stdout or '').strip()
+
     def convertOfficeToPdf(self, b64_data: str, file_name: str) -> str:
         """Превращает Word (.doc/.docx) или Excel (.xls/.xlsx/.xlsm) в PDF через установленный Microsoft Office."""
         ext = os.path.splitext(file_name)[1].lower()
@@ -265,40 +609,48 @@ class DesktopApi:
             kind = 'excel'
         else:
             raise RuntimeError(f"Неподдерживаемый тип файла: {ext or file_name}")
+        app = 'Microsoft Word' if kind == 'word' else 'Microsoft Excel'
 
         work_dir = tempfile.mkdtemp(prefix='pss_', dir=get_work_root())
         try:
             in_path = os.path.join(work_dir, 'input' + ext)
             out_path = os.path.join(work_dir, 'output.pdf')
-            script_path = os.path.join(work_dir, 'convert.ps1')
             with open(in_path, 'wb') as f:
                 f.write(base64.b64decode(b64_data))
-            with open(script_path, 'w', encoding='utf-8-sig') as f:
-                f.write(OFFICE_CONVERT_PS1)
 
-            kwargs = {}
-            if os.name == 'nt':
-                kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
+            detail = ''
+            done = False
+            # 1) fast path: a helper process that keeps Word/Excel running between files
             try:
-                res = subprocess.run(
-                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path,
-                     "-InPath", in_path, "-OutPath", out_path, "-Kind", kind],
-                    capture_output=True, encoding='utf-8', errors='replace', check=False, timeout=240, **kwargs
-                )
-            except subprocess.TimeoutExpired:
-                raise RuntimeError("Office не ответил за 4 минуты. Закройте окна Word/Excel и повторите.")
+                ok, text = OFFICE.request(f"CONVERT\t{kind}\t{in_path}\t{out_path}", timeout=330)
+                done = ok
+                detail = text
+            except OfficeServerError as e:
+                detail = f"helper: {e}"
+                # 2) fallback: one PowerShell run per file
+                detail = self._convert_one_shot(kind, in_path, out_path, work_dir) or detail
 
             if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
-                app = 'Microsoft Word' if kind == 'word' else 'Microsoft Excel'
-                detail = (res.stderr or res.stdout or '').strip()
                 if '0x80010001' in detail or 'RPC_E_CALL_REJECTED' in detail:
                     detail = f"{app} занят. Закройте окна и диалоги Word/Excel и повторите. ({detail})"
                 raise RuntimeError(f"Не удалось открыть файл в {app}. {detail}".strip())
+            _ = done
 
             with open(out_path, 'rb') as f:
                 return base64.b64encode(f.read()).decode('utf-8')
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+    def prewarmOffice(self) -> bool:
+        """Заранее запускает Word и Excel в фоне (скрыто), чтобы первый файл не ждал их запуска."""
+        def _warm():
+            for kind in ('word', 'excel'):
+                try:
+                    OFFICE.request(f"WARM\t{kind}", timeout=120)
+                except Exception:
+                    break
+        threading.Thread(target=_warm, daemon=True).start()
+        return True
 
     def convertExcelToPdf(self, b64_data: str, file_name: str) -> str:
         """Совместимость со старым именем."""

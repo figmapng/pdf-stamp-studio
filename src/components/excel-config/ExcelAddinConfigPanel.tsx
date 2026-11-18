@@ -51,6 +51,8 @@ const TEXT = {
     reinstall: 'Переустановить',
     uninstall: 'Удалить из Excel',
     working: 'Подождите…',
+    workingLong: 'Идёт установка в Excel. Это может занять до минуты — не закрывайте программу.',
+    uninstallingLong: 'Удаляю кнопку из Excel…',
     done: 'Готово! Кнопки установлены. Откройте Excel → вкладка «Главная» → справа группа «Подписи и печать». Если её нет, закройте Excel полностью и откройте снова.',
     uninstalled: 'Кнопка удалена из Excel.',
     browserOnly:
@@ -90,6 +92,8 @@ const TEXT = {
     reinstall: 'Қайта орнату',
     uninstall: 'Excel-ден жою',
     working: 'Күте тұрыңыз…',
+    workingLong: 'Excel-ге орнатылып жатыр. Бір минутқа дейін созылуы мүмкін — бағдарламаны жаппаңыз.',
+    uninstallingLong: 'Батырма Excel-ден жойылып жатыр…',
     done: 'Дайын! Батырмалар орнатылды. Excel-ді ашыңыз → «Главная» қойындысы → оң жақта «Подписи и печать» тобы. Көрінбесе, Excel-ді толық жауып, қайта ашыңыз.',
     uninstalled: 'Батырма Excel-ден жойылды.',
     browserOnly:
@@ -186,7 +190,7 @@ export const ExcelAddinConfigPanel: React.FC<Props> = ({ language }) => {
   const t = TEXT[language];
   const api = getDesktopApi();
   const [excel, setExcel] = useState<ExcelStatus | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'install' | 'uninstall' | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const refresh = useCallback(async () => {
@@ -210,7 +214,7 @@ export const ExcelAddinConfigPanel: React.FC<Props> = ({ language }) => {
     const a = getDesktopApi();
     const fn = kind === 'install' ? a?.installExcelAddin : a?.uninstallExcelAddin;
     if (!fn) return;
-    setBusy(true);
+    setBusy(kind);
     setMessage(null);
     try {
       const res = await fn();
@@ -219,7 +223,7 @@ export const ExcelAddinConfigPanel: React.FC<Props> = ({ language }) => {
     } catch (e) {
       setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
-      setBusy(false);
+      setBusy(null);
       void refresh();
     }
   };
@@ -289,17 +293,30 @@ export const ExcelAddinConfigPanel: React.FC<Props> = ({ language }) => {
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void run('install')} disabled={busy}>
+                <Button onClick={() => void run('install')} disabled={busy !== null}>
                   <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                  {busy ? t.working : excel?.installed ? t.reinstall : t.install}
+                  {busy === 'install' ? t.working : excel?.installed ? t.reinstall : t.install}
                 </Button>
                 {excel?.installed && (
-                  <Button variant="ghost" onClick={() => void run('uninstall')} disabled={busy}>
+                  <Button variant="ghost" onClick={() => void run('uninstall')} disabled={busy !== null}>
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                     {t.uninstall}
                   </Button>
                 )}
               </div>
+              {busy && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-primary-subtle)] px-3 py-2 text-sm"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mt-1 h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent"
+                  />
+                  <span>{busy === 'install' ? t.workingLong : t.uninstallingLong}</span>
+                </div>
+              )}
               <p className="text-xs text-[var(--color-text-muted)]">{t.needExcel}</p>
             </>
           ) : (

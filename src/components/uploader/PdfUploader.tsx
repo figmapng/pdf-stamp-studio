@@ -73,9 +73,25 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
   t,
 }) => {
   const [uploadWarning, setUploadWarning] = useState<string | null>(null);
+  const [busy, setBusy] = useState<{
+    index: number;
+    total: number;
+    name: string;
+    stage: 'reading' | 'converting' | 'checking';
+  } | null>(null);
+  const [addedInfo, setAddedInfo] = useState<string | null>(null);
 
   const processFileList = async (fileList: FileList | File[]) => {
     setUploadWarning(null);
+    setAddedInfo(null);
+    try {
+      await processFileListInner(fileList);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const processFileListInner = async (fileList: FileList | File[]) => {
     const incoming = Array.from(fileList);
     if (incoming.length === 0) return;
 
@@ -116,6 +132,8 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
       }
 
       const isOffice = OFFICE_FILE_RE.test(file.name);
+      const progressBase = { index: i + 1, total: toProcess.length, name: file.name };
+      setBusy({ ...progressBase, stage: isOffice ? 'converting' : 'reading' });
       let bytes: Uint8Array;
       let targetName = uniqueName;
 
@@ -148,6 +166,7 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
         bytes = new Uint8Array(buffer);
       }
 
+      setBusy({ ...progressBase, stage: 'checking' });
       const inspection = await inspectPdfIntegrity(bytes);
 
       parsed.push({
@@ -165,6 +184,7 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
 
     if (parsed.length > 0) {
       onAddFiles(parsed);
+      setAddedInfo(`${t.upload.addedFiles}: ${parsed.length}`);
     }
   };
 
@@ -205,6 +225,51 @@ export const PdfUploader: React.FC<PdfUploaderProps> = ({
             error={uploadWarning}
             onFilesSelected={(fl) => void processFileList(fl)}
           />
+
+          {busy && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="space-y-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-primary-subtle)] px-3 py-2.5 text-sm"
+            >
+              <div className="flex items-start gap-2">
+                <span
+                  aria-hidden="true"
+                  className="mt-1 h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[var(--color-primary)] border-t-transparent"
+                />
+                <span>
+                  <strong>
+                    {busy.stage === 'converting'
+                      ? t.upload.stageConverting
+                      : busy.stage === 'checking'
+                        ? t.upload.stageChecking
+                        : t.upload.stageReading}{' '}
+                    ({busy.index} / {busy.total}):
+                  </strong>{' '}
+                  {busy.name}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white">
+                <div
+                  className="h-full rounded-full bg-[var(--color-primary)] transition-[width] duration-300"
+                  style={{ width: `${Math.max(6, Math.round(((busy.index - 1) / busy.total) * 100))}%` }}
+                />
+              </div>
+              {busy.stage === 'converting' && (
+                <p className="text-xs text-[var(--color-text-secondary)]">{t.upload.officeConverting}</p>
+              )}
+            </div>
+          )}
+
+          {!busy && addedInfo && (
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-[var(--radius-md)] border border-emerald-200 bg-[var(--color-success-subtle)] px-3 py-2 text-sm font-medium text-[var(--color-success)]"
+            >
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              {addedInfo}
+            </div>
+          )}
 
           {files.length > 0 && (
             <Table>

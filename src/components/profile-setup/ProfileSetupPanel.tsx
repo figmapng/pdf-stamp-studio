@@ -4,7 +4,7 @@ import type { PersonProfile, PngAsset, SignerConfig, StampConfig } from '../../t
 import type { Translations } from '../../i18n';
 import { findSharedNameTokens } from '../../engine/text-normalizer';
 import { cn } from '../../lib/cn';
-import { Button, Card, CardContent, CardHeader, CardTitle, IconButton, Input } from '../ui';
+import { Button, Card, CardContent, CardHeader, CardTitle, IconButton, Input, Switch } from '../ui';
 import { AssetManagerCard } from './AssetManagerCard';
 import { StampSettingsPanel } from '../stamp-settings/StampSettingsPanel';
 
@@ -65,6 +65,7 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
   const fullNameId = useId();
   const rolesId = useId();
   const { profile, asset } = signer;
+  const isActive = profile.enabled !== false;
 
   const displayTitle = profile.fullName.trim()
     ? `${index + 1}. ${profile.fullName.trim()}`
@@ -86,10 +87,11 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
       className={cn(
         'flex h-full min-w-0 scroll-mt-24 flex-col transition-shadow duration-300',
         isHighlighted && 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30',
+        !isActive && 'bg-slate-50',
       )}
     >
-      <CardHeader className="px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
+      <CardHeader className="flex-nowrap gap-2 px-4 py-2.5">
+        <div className={cn('flex min-w-0 flex-1 items-center gap-2', !isActive && 'opacity-60')}>
           <span
             className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] ${accentClass}`}
           >
@@ -98,21 +100,35 @@ const SignerFormCard: React.FC<SignerFormCardProps> = ({
           <CardTitle className="truncate text-sm">{displayTitle}</CardTitle>
         </div>
 
-        <IconButton
-          variant="ghost"
-          size="sm"
-          aria-label={`${t.profiles.removeCardBtn} ${displayTitle}`}
-          icon={
-            <Trash2
-              className="h-3.5 w-3.5 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"
-              strokeWidth={1.75}
-            />
-          }
-          onClick={onRemove}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          <Switch
+            checked={isActive}
+            onCheckedChange={(next) => updateProfile({ enabled: next })}
+            label={isActive ? t.profiles.activeOn : t.profiles.activeOff}
+          />
+          <IconButton
+            variant="ghost"
+            size="sm"
+            aria-label={`${t.profiles.removeCardBtn} ${displayTitle}`}
+            icon={
+              <Trash2
+                className="h-3.5 w-3.5 text-[var(--color-text-muted)] hover:text-[var(--color-danger)]"
+                strokeWidth={1.75}
+              />
+            }
+            onClick={onRemove}
+          />
+        </div>
       </CardHeader>
 
-      <CardContent className="flex flex-1 flex-col justify-between gap-3 p-4">
+      <CardContent
+        className={cn('flex flex-1 flex-col justify-between gap-3 p-4', !isActive && 'opacity-60')}
+      >
+        {!isActive && (
+          <p className="rounded-[var(--radius-sm)] bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-warning)]">
+            {t.profiles.inactiveNote}
+          </p>
+        )}
         <div className="space-y-3">
           <div className="flex flex-col gap-1">
             <label

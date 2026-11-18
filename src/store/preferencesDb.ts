@@ -23,6 +23,7 @@ export interface PersistedStampConfig {
   label: string;
   policy: StampPolicy;
   asset: PersistedPngAsset | null;
+  enabled?: boolean;
 }
 
 export interface SavedPreferences {
@@ -80,7 +81,7 @@ export function hydrateSignerConfig(persisted: PersistedSignerConfig): SignerCon
     profile: {
       ...persisted.profile,
       signatureAssetId: asset?.id ?? null,
-      enabled: true,
+      enabled: persisted.profile.enabled !== false,
     },
     asset,
   };
@@ -92,6 +93,7 @@ export function serializeStampConfig(stamp: StampConfig): PersistedStampConfig {
     label: stamp.label,
     policy: stamp.policy,
     asset: serializePngAsset(stamp.asset),
+    enabled: stamp.enabled !== false,
   };
 }
 
@@ -101,6 +103,7 @@ export function hydrateStampConfig(persisted: PersistedStampConfig): StampConfig
     label: persisted.label,
     policy: persisted.policy,
     asset: hydratePngAsset(persisted.asset),
+    enabled: persisted.enabled !== false,
   };
 }
 

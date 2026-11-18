@@ -52,7 +52,7 @@ import {
   TooltipTrigger,
 } from '../components/ui';
 import { PdfUploader } from '../components/uploader/PdfUploader';
-import { syncProfilesToExcel } from '../lib/desktopSync';
+import { getDesktopApi, syncProfilesToExcel } from '../lib/desktopSync';
 import { ProfileSetupPanel } from '../components/profile-setup/ProfileSetupPanel';
 import {
   ManualReviewCenter,
@@ -177,6 +177,15 @@ export const App: React.FC = () => {
   const [files, setFiles] = useState<UploadedPdfFile[]>([]);
   const [signers, setSigners] = useState<SignerConfig[]>([]);
   const [stamps, setStamps] = useState<StampConfig[]>([]);
+  // Switched-off signatories/stamps stay in the list but are ignored everywhere else.
+  const activeSigners = useMemo(
+    () => signers.filter((s) => s.profile.enabled !== false),
+    [signers],
+  );
+  const activeStamps = useMemo(() => {
+    const offSigners = new Set(signers.filter((s) => s.profile.enabled === false).map((s) => s.id));
+    return stamps.filter((st) => st.enabled !== false && !offSigners.has(st.policy.owner));
+  }, [signers, stamps]);
 
   const [thresholds, setThresholds] = useState<DetectionThresholds>(DEFAULT_THRESHOLDS);
   const [ocrConfig, setOcrConfig] = useState<OcrConfig>(DEFAULT_OCR_CONFIG);
@@ -356,6 +365,24 @@ export const App: React.FC = () => {
     };
   }, [prefsLoaded, savedProfiles]);
 
+  // Windows app: start Word/Excel hidden in the background as soon as the Documents tab is opened,
+  // so the first Word/Excel file does not wait for Office to start.
+  const officeWarmedRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== 'upload' || officeWarmedRef.current) return;
+    const warm = () => {
+      const api = getDesktopApi();
+      if (!api?.prewarmOffice) return false;
+      officeWarmedRef.current = true;
+      void api.prewarmOffice().catch(() => undefined);
+      return true;
+    };
+    if (warm()) return;
+    const onReady = () => void warm();
+    window.addEventListener('pywebviewready', onReady);
+    return () => window.removeEventListener('pywebviewready', onReady);
+  }, [activeTab]);
+
   const latestUrlsRef = useRef<string[]>([]);
   useEffect(() => {
     const urls: string[] = [];
@@ -486,7 +513,7 @@ export const App: React.FC = () => {
   };
 
   const startAnalysis = () => {
-    if (files.length === 0 || (signers.length === 0 && stamps.length === 0)) return;
+    if (files.length === 0 || (activeSigners.length === 0 && activeStamps.length === 0)) return;
     handleReleaseAllExportUrls();
     setResults({});
     setJobs({});
@@ -496,8 +523,8 @@ export const App: React.FC = () => {
 
     const handle = startBatchAnalysis({
       files,
-      signers,
-      stamps,
+      signers: activeSigners,
+      stamps: activeStamps,
       thresholds,
       ocrConfig,
       enableOpenCv,
@@ -544,8 +571,8 @@ export const App: React.FC = () => {
 
       const nextDoc = revalidateMultiDocumentResult({
         doc,
-        signers,
-        stamps,
+        signers: activeSigners,
+        stamps: activeStamps,
         nextSignerEntries: patch.nextSignerEntries,
         nextStampEntries: patch.nextStampEntries,
         manualApprovalConfirmed: patch.manualApprovalConfirmed,
@@ -670,8 +697,8 @@ export const App: React.FC = () => {
 
         next[id] = revalidateMultiDocumentResult({
           doc,
-          signers,
-          stamps,
+          signers: activeSigners,
+          stamps: activeStamps,
           nextSignerEntries,
           nextStampEntries,
           manualApprovalConfirmed:
@@ -693,8 +720,8 @@ export const App: React.FC = () => {
         approved++;
         next[id] = revalidateMultiDocumentResult({
           doc,
-          signers,
-          stamps,
+          signers: activeSigners,
+          stamps: activeStamps,
           manualApprovalConfirmed: true,
         });
       }
@@ -771,7 +798,7 @@ export const App: React.FC = () => {
         : 'max-w-5xl';
   const activeStepIndex = navTabs.findIndex((tab) => tab.id === activeTab);
   const isDocTab = activeTab === 'upload' || activeTab === 'review' || activeTab === 'export';
-  const noProfiles = signers.length === 0 && stamps.length === 0;
+  const noProfiles = activeSigners.length === 0 && activeStamps.length === 0;
   const mainTabs: Array<{ id: 'profiles' | 'docs' | 'excel'; label: string; active: boolean; go: () => void }> = [
     { id: 'profiles', label: t.nav.profiles, active: activeTab === 'profiles', go: () => setActiveTab('profiles') },
     { id: 'docs', label: t.nav.documents, active: isDocTab, go: () => { if (!isDocTab) setActiveTab('upload'); } },
@@ -994,8 +1021,8 @@ export const App: React.FC = () => {
             isRunning={isAnalyzing}
             selectedDocumentId={selectedReviewId}
             onSelectDocument={setSelectedReviewId}
-            signers={signers}
-            stamps={stamps}
+            signers={activeSigners}
+            stamps={activeStamps}
             onUpdateDocument={handleUpdateDocument}
             onApplyLayoutToAll={handleApplyLayoutToAll}
             onApproveAll={handleApproveAll}
@@ -1010,8 +1037,8 @@ export const App: React.FC = () => {
             files={files}
             results={results}
             jobs={jobs}
-            signers={signers}
-            stamps={stamps}
+            signers={activeSigners}
+            stamps={activeStamps}
             onMarkCompleted={handleMarkCompleted}
             onMarkFailed={handleMarkFailed}
             t={t}

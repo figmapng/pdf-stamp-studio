@@ -9,6 +9,7 @@ interface DesktopApi {
   installExcelAddin?: () => Promise<{ success: boolean; error?: string; output?: string }>;
   uninstallExcelAddin?: () => Promise<{ success: boolean; error?: string; output?: string }>;
   getExcelStatus?: () => Promise<ExcelStatus>;
+  prewarmOffice?: () => Promise<boolean>;
 }
 
 export interface ExcelStatus {
@@ -30,6 +31,7 @@ export interface ExcelSyncPayload {
   }>;
   stamps: Array<{
     id: string;
+    enabled: boolean;
     label: string;
     owner: string;
     relation: string;
@@ -101,6 +103,7 @@ export async function buildExcelSyncPayload(
   signers: SignerConfig[],
   stamps: StampConfig[],
 ): Promise<ExcelSyncPayload> {
+  const offSigners = new Set(signers.filter((s) => s.profile.enabled === false).map((s) => s.id));
   return {
     signers: await Promise.all(
       signers.map(async (s) => ({
@@ -118,6 +121,7 @@ export async function buildExcelSyncPayload(
     stamps: await Promise.all(
       stamps.map(async (st) => ({
         id: st.id,
+        enabled: st.enabled !== false && !offSigners.has(st.policy.owner),
         label: st.label,
         owner: st.policy.owner,
         relation: st.policy.relation,
